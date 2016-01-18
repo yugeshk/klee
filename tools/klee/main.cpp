@@ -223,6 +223,7 @@ private:
   unsigned m_numTotalTests;     // Number of tests received from the interpreter
   unsigned m_numGeneratedTests; // Number of tests successfully generated
   unsigned m_pathsExplored; // number of paths explored so far
+  unsigned m_callPathIndex; // number of call path strings dumped so far
 
   // used for writing .ktest files
   int m_argc;
@@ -243,6 +244,7 @@ public:
   void processTestCase(const ExecutionState  &state,
                        const char *errorMessage,
                        const char *errorSuffix);
+  void processCallPath(const ExecutionState &state);
 
   std::string getOutputFilename(const std::string &filename);
   llvm::raw_fd_ostream *openOutputFile(const std::string &filename);
@@ -262,7 +264,7 @@ public:
 KleeHandler::KleeHandler(int argc, char **argv)
     : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0), m_infoFile(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
-      m_pathsExplored(0), m_argc(argc), m_argv(argv) {
+      m_pathsExplored(0), m_callPathIndex(0), m_argc(argc), m_argv(argv) {
 
   // create output directory (OutputDir or "klee-out-<i>")
   bool dir_given = OutputDir != "";
@@ -490,7 +492,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       llvm::raw_fd_ostream *f = openTestFile("sym.path", id);
       for (std::vector<unsigned char>::iterator I = symbolicBranches.begin(), E = symbolicBranches.end(); I!=E; ++I) {
         *f << *I << "\n";
-      }
+     }
       delete f;
     }
 
@@ -520,6 +522,15 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       delete f;
     }
   }
+}
+
+void KleeHandler::processCallPath(const ExecutionState &state) {
+  unsigned id = ++m_callPathIndex;
+  std::stringstream filename;
+  filename << "call-path" << std::setfill('0') << std::setw(6) << id << '.' << "txt";
+  llvm::raw_ostream *f = openOutputFile(filename.str());
+  *f << state.callPath;
+  delete f;
 }
 
   // load a .path file
