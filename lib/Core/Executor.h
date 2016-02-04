@@ -527,12 +527,6 @@ public:
   size_t getAllocationAlignment(const llvm::Value *allocSite) const;
 };
 
-  //void FillCallInfoInput(llvm::Function* f,
-  //                      const std::vector< ref<Expr> > &arguments,
-  //                      const ExecutionState& state,
-  //                     const Executor& exec,
-  //                     CallInfo* info);
-
 void FillCallInfoOutput(llvm::Function* f,
                         bool isVoidReturn,
                         ref<Expr> result,
