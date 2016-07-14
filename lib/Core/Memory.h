@@ -205,6 +205,8 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
+  void symbolize();
+
 private:
   const UpdateList &getUpdates() const;
 
@@ -234,7 +236,7 @@ private:
   void print() const;
   ArrayCache *getArrayCache() const;
 };
-  
+
 } // End klee namespace
 
 #endif
