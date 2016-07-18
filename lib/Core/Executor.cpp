@@ -3869,7 +3869,8 @@ Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opt
 void Executor::induceInvariantsForThisLoop(ExecutionState &state,
                                            KInstruction *target)
 {
+  //TODO
   //... the magick here ...
 
-  bindLocal(target, state, ConstantExpr::create(1, Expr::Bool));
+  bindLocal(target, state, ConstantExpr::create(1, Expr::Int32));
 }
