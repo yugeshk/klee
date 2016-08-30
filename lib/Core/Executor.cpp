@@ -1482,7 +1482,8 @@ void dumpFields(std::map<int, klee::FieldDescr>* fields, size_t base,
       klee::ConstantExpr::alloc(base + offset,
                                 sizeof(size_t)*8);
     if (i->second.doTraceValue)
-      i->second.outVal = state.readMemoryChunk(addrExpr, i->second.width);
+      i->second.outVal = state.readMemoryChunk(addrExpr, i->second.width,
+                                               true);
     if (i->second.addr == 0)
       i->second.addr = base + offset;
     else {
@@ -1520,7 +1521,8 @@ void klee::FillCallInfoOutput(Function* f,
           info->ret.width = exec.getWidthForLLVMType(elementType);
         }
         info->ret.val = state.readMemoryChunk(address,
-                                              info->ret.width);
+                                              info->ret.width,
+                                              true);
         info->ret.funPtr = NULL;
         size_t base = address->getZExtValue();
         dumpFields(&info->ret.fields, base, state);
@@ -1544,7 +1546,7 @@ void klee::FillCallInfoOutput(Function* f,
                                   exec.getWidthForLLVMType(sizeType)) );
       Expr::Width width = 8*rezS->getZExtValue();
       info->ret.isPtr = true;
-      info->ret.val = state.readMemoryChunk(rezP, width);
+      info->ret.val = state.readMemoryChunk(rezP, width, true);
       info->ret.funPtr = NULL;
       info->ret.expr = rezP;
     }
@@ -1554,7 +1556,8 @@ void klee::FillCallInfoOutput(Function* f,
   for (int i = 0; i < numParams; ++i) {
     CallArg *arg = &info->args[i];
     if (arg->isPtr && arg->funPtr == NULL) {
-      info->args[i].outVal = state.readMemoryChunk(arg->expr, arg->outWidth);
+      info->args[i].outVal = state.readMemoryChunk(arg->expr, arg->outWidth,
+                                                   true);
       size_t base = (cast<ConstantExpr>(arg->expr))->getZExtValue();
       dumpFields(&arg->fields, base, state);
     }
@@ -1566,7 +1569,8 @@ void klee::FillCallInfoOutput(Function* f,
     size_t addr = i->first;
     extraPtr->outVal =
       state.readMemoryChunk(ConstantExpr::alloc(addr, 8*sizeof(size_t)),
-                            extraPtr->width);
+                            extraPtr->width,
+                            true);
     dumpFields(&extraPtr->fields, addr, state);
   }
 
