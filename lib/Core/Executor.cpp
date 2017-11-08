@@ -285,7 +285,7 @@ namespace {
 		    clEnumValN(Executor::User, "User", "Wrong klee_* functions invocation"),
 		    clEnumValN(Executor::Inaccessible, "Inaccessible", "The memory access is forbidden for this address at this point by klee_forbid_access"),
 		    clEnumValN(Executor::Unhandled, "Unhandled", "Unhandled instruction hit"),
-		    KLEE_LLVM_CL_VAL_END),
+		    clEnumValEnd),
 		  cl::ZeroOrMore);
 
   cl::opt<unsigned long long>
@@ -3442,7 +3442,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (!isa<ConstantExpr>(address)) {
       printf("\n");
       printf("Some symbolic indexing going on here:\n");
-      printFileLine(state, (KInstruction*)state.pc, llvm::errs());
+      state.pc->printFileLine(llvm::errs());
       state.dumpStack(llvm::errs());
     }
   }
@@ -3485,7 +3485,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           if (os->readOnly) {
             terminateStateOnError(state,
                                   "memory error: object read only",
-                                  "readonly.err");
+                                  User);
           } else {
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
@@ -3537,7 +3537,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           if (os->readOnly) {
             terminateStateOnError(*bound,
                                   "memory error: object read only",
-                                  "readonly.err");
+                                  User);
           } else {
             ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
             wos->write(mo->getOffsetExpr(address), value);
