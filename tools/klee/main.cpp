@@ -593,7 +593,7 @@ bool dumpCallInfo(const CallInfo& ci, llvm::raw_ostream& file) {
               arg->pointee.outVal.isNull()) return false;
           file <<"->";
           if (arg->pointee.doTraceValueOut) {
-            file <<*arg->pointee.outVal <<"]";
+            file <<*arg->pointee.outVal <<"]"; // FIXME this is dubious, the delimiter is only written if doTraceValueOut?
           }
           std::map<int, FieldDescr>::const_iterator i =
             arg->pointee.fields.begin(),
@@ -1014,7 +1014,11 @@ void dumpCallGroup(const std::vector<CallInfo*> group, llvm::raw_ostream& file) 
       if (arg.funPtr != NULL) {
         file <<arg.funPtr->getName();
       } else {
-        file <<"[" <<arg.pointee.inVal <<"->";
+        file << "[";
+        if (arg.pointee.doTraceValueIn) {
+           file << arg.pointee.inVal;
+        }
+        file << "->";
         for (; gi != ge; ++gi) {
           file <<*(**gi).args[argI].pointee.outVal <<"; ";
         }
@@ -1033,7 +1037,11 @@ void dumpCallGroup(const std::vector<CallInfo*> group, llvm::raw_ostream& file) 
         for (; fi != fe; ++fi) {
           int fieldOffset = fi->first;
           const FieldDescr& descr = fi->second;
-          file <<"[" <<descr.name <<":" <<*descr.inVal << "->";
+          file <<"[";
+          if (descr.doTraceValueIn) {
+            file <<descr.name <<":" <<*descr.inVal;
+          }
+          file << "->";
           for (; gi != ge; ++gi) {
             std::map<int, FieldDescr>::const_iterator otherDescrI =
               (**gi).args[argI].pointee.fields.find(fieldOffset);
