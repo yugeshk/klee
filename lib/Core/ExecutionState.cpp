@@ -1187,7 +1187,7 @@ SymbolSet CallInfo::computeRetSymbolSet() const {
   }
   for (unsigned i = 0; i < args.size(); ++i) {
     if (args[i].isPtr && args[i].funPtr == NULL &&
-        args[i].pointee.doTraceValueOut && !args[i].pointee.outVal.isNull()) {
+        args[i].pointee.doTraceValueOut) {
       SymbolSet argSymbols = GetExprSymbols::visit(args[i].pointee.outVal);
       symbols.insert(argSymbols.begin(), argSymbols.end());
     }
