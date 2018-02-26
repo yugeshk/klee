@@ -11,6 +11,7 @@
 #include "Memory.h"
 #include "SpecialFunctionHandler.h"
 #include "TimingSolver.h"
+#include "klee/MergeHandler.h"
 
 #include "klee/ExecutionState.h"
 
@@ -24,22 +25,12 @@
 
 #include "klee/CommandLine.h"
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Module.h"
-#else
-#include "llvm/Module.h"
-#endif
 #include "llvm/ADT/Twine.h"
-
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-#include "llvm/Target/TargetData.h"
-#elif LLVM_VERSION_CODE <= LLVM_VERSION(3, 2)
-#include "llvm/DataLayout.h"
-#else
 #include "llvm/IR/DataLayout.h"
-#endif
 
 #include <errno.h>
+#include <sstream>
 
 using namespace llvm;
 using namespace klee;
@@ -86,9 +77,8 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   addDNR("_exit", handleExit),
   { "exit", &SpecialFunctionHandler::handleExit, true, false, true },
   addDNR("klee_abort", handleAbort),
-  addDNR("klee_silent_exit", handleSilentExit),  
+  addDNR("klee_silent_exit", handleSilentExit),
   addDNR("klee_report_error", handleReportError),
-
   add("calloc", handleCalloc, true),
   add("free", handleFree, false),
   add("klee_assume", handleAssume, false),
@@ -102,10 +92,13 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_define_fixed_object", handleDefineFixedObject, false),
   add("klee_get_obj_size", handleGetObjSize, true),
   add("klee_get_errno", handleGetErrno, true),
+  add("klee_intercept_reads", handleInterceptReads, false),
+  add("klee_intercept_writes", handleInterceptWrites, false),
   add("klee_is_symbolic", handleIsSymbolic, true),
   add("klee_make_symbolic", handleMakeSymbolic, false),
   add("klee_mark_global", handleMarkGlobal, false),
-  add("klee_merge", handleMerge, false),
+  add("klee_open_merge", handleOpenMerge, false),
+  add("klee_close_merge", handleCloseMerge, false),
   add("klee_prefer_cex", handlePreferCex, false),
   add("klee_posix_prefer_cex", handlePosixPreferCex, false),
   add("klee_print_expr", handlePrintExpr, false),
@@ -115,12 +108,15 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_warning", handleWarning, false),
   add("klee_warning_once", handleWarningOnce, false),
   add("klee_alias_function", handleAliasFunction, false),
+  add("klee_alias_function_regex", handleAliasFunctionRegex, false),
+  add("klee_alias_undo", handleAliasUndo, false),
   add("malloc", handleMalloc, true),
   add("realloc", handleRealloc, true),
   add("klee_trace_paramf", handleTraceParam, false),
   add("klee_trace_paramd", handleTraceParam, false),
   add("klee_trace_paraml", handleTraceParam, false),
   add("klee_trace_paramll", handleTraceParam, false),
+  add("klee_trace_param_u16", handleTraceParam, false),
   add("klee_trace_param_i32", handleTraceParam, false),
   add("klee_trace_param_i64", handleTraceParam, false),
   add("klee_trace_param_ptr", handleTraceParamPtr, false),
@@ -139,6 +135,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_trace_ret_ptr_field", handleTraceRetPtrField, false),
   add("klee_trace_ret_ptr_field_just_ptr", handleTraceRetPtrFieldJustPtr, false),
   add("klee_trace_param_ptr_nested_field", handleTraceParamPtrNestedField, false),
+  add("klee_trace_param_ptr_nested_field_directed", handleTraceParamPtrNestedFieldDirected, false),
   add("klee_trace_ret_ptr_nested_field", handleTraceRetPtrNestedField, false),
   add("klee_trace_extra_ptr", handleTraceExtraPtr, false),
   add("klee_trace_extra_ptr_field", handleTraceExtraPtrField, false),
@@ -170,14 +167,15 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   // operator new(unsigned long)
   add("_Znwm", handleNew, true),
 
-  // clang -fsanitize=unsigned-integer-overflow
+  // Run clang with -fsanitize=signed-integer-overflow and/or
+  // -fsanitize=unsigned-integer-overflow
   add("__ubsan_handle_add_overflow", handleAddOverflow, false),
   add("__ubsan_handle_sub_overflow", handleSubOverflow, false),
   add("__ubsan_handle_mul_overflow", handleMulOverflow, false),
   add("__ubsan_handle_divrem_overflow", handleDivRemOverflow, false),
 
 #undef addDNR
-#undef add  
+#undef add
 };
 
 SpecialFunctionHandler::const_iterator SpecialFunctionHandler::begin() {
@@ -223,13 +221,7 @@ void SpecialFunctionHandler::prepare() {
       // Make sure NoReturn attribute is set, for optimization and
       // coverage counting.
       if (hi.doesNotReturn)
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
         f->addFnAttr(Attribute::NoReturn);
-#elif LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
-        f->addFnAttr(Attributes::NoReturn);
-#else
-        f->addFnAttr(Attribute::NoReturn);
-#endif
 
       // Change to a declaration since we handle internally (simplifies
       // module and allows deleting dead code).
@@ -348,6 +340,32 @@ void SpecialFunctionHandler::handleAliasFunction(ExecutionState &state,
   else state.addFnAlias(old_fn, new_fn);
 }
 
+void SpecialFunctionHandler::handleAliasFunctionRegex(ExecutionState &state,
+						      KInstruction *target,
+						      std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==2 && 
+         "invalid number of arguments to klee_alias_function_regex");
+  assert(isa<klee::ConstantExpr>(arguments[0]) &&
+         "first arg to klee_alias_function_regex cannot be a symbol");
+  assert(isa<klee::ConstantExpr>(arguments[1]) &&
+         "second arg to klee_alias_function_regex cannot be a symbol");
+  std::string fn_regex = readStringAtAddress(state, arguments[0]);
+  std::string new_fn = readStringAtAddress(state, arguments[1]);
+  KLEE_DEBUG_WITH_TYPE("alias_handling", llvm::errs() << "Replacing by regex " << fn_regex
+                                           << " with " << new_fn << "()\n");
+  state.addFnRegexAlias(fn_regex, new_fn);
+}
+
+void SpecialFunctionHandler::handleAliasUndo(ExecutionState &state,
+					     KInstruction *target,
+					     std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==1 && 
+         "invalid number of arguments to klee_alias_undo");
+  std::string alias = readStringAtAddress(state, arguments[0]);
+  KLEE_DEBUG_WITH_TYPE("alias_handling", llvm::errs() << "Undoing alias " << alias << "\n");
+  state.removeFnAlias(alias);
+}
+
 void SpecialFunctionHandler::handleAssert(ExecutionState &state,
                                           KInstruction *target,
                                           std::vector<ref<Expr> > &arguments) {
@@ -378,10 +396,41 @@ void SpecialFunctionHandler::handleReportError(ExecutionState &state,
 				 readStringAtAddress(state, arguments[3]).c_str());
 }
 
-void SpecialFunctionHandler::handleMerge(ExecutionState &state,
-                           KInstruction *target,
-                           std::vector<ref<Expr> > &arguments) {
-  // nop
+void SpecialFunctionHandler::handleOpenMerge(ExecutionState &state,
+    KInstruction *target,
+    std::vector<ref<Expr> > &arguments) {
+  if (!UseMerge) {
+    klee_warning_once(0, "klee_open_merge ignored, use '-use-merge'");
+    return;
+  }
+
+  state.openMergeStack.push_back(
+      ref<MergeHandler>(new MergeHandler(&executor)));
+
+  if (DebugLogMerge)
+    llvm::errs() << "open merge: " << &state << "\n";
+}
+
+void SpecialFunctionHandler::handleCloseMerge(ExecutionState &state,
+    KInstruction *target,
+    std::vector<ref<Expr> > &arguments) {
+  if (!UseMerge) {
+    klee_warning_once(0, "klee_close_merge ignored, use '-use-merge'");
+    return;
+  }
+  Instruction *i = target->inst;
+
+  if (DebugLogMerge)
+    llvm::errs() << "close merge: " << &state << " at " << i << '\n';
+
+  if (state.openMergeStack.empty()) {
+    std::ostringstream warning;
+    warning << &state << " ran into a close at " << i << " without a preceding open\n";
+    klee_warning(warning.str().c_str());
+  } else {
+    state.openMergeStack.back()->addClosedState(&state, i);
+    state.openMergeStack.pop_back();
+  }
 }
 
 void SpecialFunctionHandler::handleNew(ExecutionState &state,
@@ -703,6 +752,29 @@ void SpecialFunctionHandler::handleGetValue(ExecutionState &state,
   executor.executeGetValue(state, arguments[0], target);
 }
 
+void SpecialFunctionHandler::handleInterceptReads(ExecutionState &state,
+                                                  KInstruction *target,
+                                                  std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==2 &&
+         "invalid number of arguments to klee_intercept_reads");
+
+  uint64_t addr = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  std::string reader = readStringAtAddress(state, arguments[1]);
+  state.addReadsIntercept(addr, reader);
+}
+
+void SpecialFunctionHandler::handleInterceptWrites(ExecutionState &state,
+                                                   KInstruction *target,
+                                                   std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size()==2 &&
+         "invalid number of arguments to klee_intercept_writes");
+
+  uint64_t addr = cast<ConstantExpr>(arguments[0])->getZExtValue();
+  std::string writer = readStringAtAddress(state, arguments[1]);
+
+  state.addWritesIntercept(addr, writer);
+}
+
 void SpecialFunctionHandler::handleDefineFixedObject(ExecutionState &state,
                                                      KInstruction *target,
                                                      std::vector<ref<Expr> > &arguments) {
@@ -725,15 +797,22 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
                                                 std::vector<ref<Expr> > &arguments) {
   std::string name;
 
-  // FIXME: For backwards compatibility, we should eventually enforce the
-  // correct arguments.
-  if (arguments.size() == 2) {
+  // FIXME: For backwards compatibility. We should eventually enforce the
+  // correct arguments and types.
+  switch (arguments.size()) {
+    case 2:
+      klee_warning("klee_make_symbolic: deprecated number of arguments (2 instead of 3)");
+      break;
+    case 3:
+      name = readStringAtAddress(state, arguments[2]);
+      break;
+    default:
+      executor.terminateStateOnError(state, "illegal number of arguments to klee_make_symbolic(void*, size_t, char*)", Executor::User);
+      return;
+  }
+  if (name.length() == 0) {
     name = "unnamed";
-  } else {
-    // FIXME: Should be a user.err, not an assert.
-    assert(arguments.size()==3 &&
-           "invalid number of arguments to klee_make_symbolic");  
-    name = readStringAtAddress(state, arguments[2]);
+    klee_warning("klee_make_symbolic: renamed empty name to \"unnamed\"");
   }
 
   Executor::ExactResolutionList rl;
@@ -800,21 +879,21 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
 void SpecialFunctionHandler::handleAddOverflow(ExecutionState &state,
                                                KInstruction *target,
                                                std::vector<ref<Expr> > &arguments) {
-  executor.terminateStateOnError(state, "overflow on unsigned addition",
+  executor.terminateStateOnError(state, "overflow on addition",
                                  Executor::Overflow);
 }
 
 void SpecialFunctionHandler::handleSubOverflow(ExecutionState &state,
                                                KInstruction *target,
                                                std::vector<ref<Expr> > &arguments) {
-  executor.terminateStateOnError(state, "overflow on unsigned subtraction",
+  executor.terminateStateOnError(state, "overflow on subtraction",
                                  Executor::Overflow);
 }
 
 void SpecialFunctionHandler::handleMulOverflow(ExecutionState &state,
                                                KInstruction *target,
                                                std::vector<ref<Expr> > &arguments) {
-  executor.terminateStateOnError(state, "overflow on unsigned multiplication",
+  executor.terminateStateOnError(state, "overflow on multiplication",
                                  Executor::Overflow);
 }
 
@@ -996,6 +1075,485 @@ void SpecialFunctionHandler::handleTraceExtraPtrFieldJustPtr
   width = width * 8;//Convert to bits.
   size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
   state.traceExtraPtrField(ptr, offset, width, name, false);
+}
+
+void SpecialFunctionHandler::handleTraceParamPtrFieldJustPtr
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> >
+ &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[3]);
+  width = width * 8;//Convert to bits.
+  state.traceArgPtrField(arguments[0], offset, width, name, false, false);
+}
+
+void SpecialFunctionHandler::handleTraceParam(ExecutionState &state,
+                                              KInstruction *target,
+                                              std::vector<ref<Expr> > &arguments) {
+  std::string name = readStringAtAddress(state, arguments[1]);
+  state.traceArgValue(arguments[0], name);
+}
+
+void SpecialFunctionHandler::handleTraceParamTaggedPtr(ExecutionState &state,
+                                                       KInstruction *target,
+                                                       std::vector<ref<Expr> >
+                                                       &arguments) {
+  if (!isa<klee::ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError
+      (state, "Width must be a static constant.",
+       Executor::User);
+    return;
+  }
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  std::string name = readStringAtAddress(state, arguments[2]);
+  std::string type = readStringAtAddress(state, arguments[3]);
+  state.traceArgPtr(arguments[0], width, name, type, true, true);
+}
+
+void SpecialFunctionHandler::handleTraceParamPtr(ExecutionState &state,
+                                                 KInstruction *target,
+                                                 std::vector<ref<Expr> >
+                                                 &arguments) {
+  if (!isa<klee::ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError
+      (state, "Width must be a static constant.",
+       Executor::User);
+    return;
+  }
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  std::string name = readStringAtAddress(state, arguments[2]);
+  state.traceArgPtr(arguments[0], width, name, "", true, true);
+}
+
+void SpecialFunctionHandler::handleTraceParamPtrDirected(ExecutionState &state,
+                                                         KInstruction *target,
+                                                         std::vector<ref<Expr> >
+                                                         &arguments) {
+  if (!isa<klee::ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError
+      (state, "Width must be a static constant.",
+       Executor::User);
+    return;
+  }
+  if (!isa<klee::ConstantExpr>(arguments[3])) {
+    executor.terminateStateOnError
+      (state, "Direction must be a static constant.",
+       Executor::User);
+    return;
+  }
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  std::string name = readStringAtAddress(state, arguments[2]);
+  size_t direction = (cast<klee::ConstantExpr>(arguments[3]))->getZExtValue();
+  bool trace_in = false, trace_out = false;
+  switch(direction) {
+  case 0: trace_in = false; trace_out = false; break;
+  case 1: trace_in = true;  trace_out = false; break;
+  case 2: trace_in = false; trace_out = true; break;
+  case 3: trace_in = true;  trace_out = true; break;
+  default:
+    executor.terminateStateOnError
+      (state, "Unrecognized tracing direction",
+       Executor::User);
+    return;
+  }
+  state.traceArgPtr(arguments[0], width, name, "", trace_in, trace_out);
+}
+
+
+void SpecialFunctionHandler::handleTraceParamJustPtr(ExecutionState &state,
+                                                     KInstruction *target,
+                                                     std::vector<ref<Expr> >
+                                                     &arguments) {
+  if (!isa<klee::ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError
+      (state, "Width must be a static constant.",
+       Executor::User);
+    return;
+  }
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  std::string name = readStringAtAddress(state, arguments[2]);
+  state.traceArgPtr(arguments[0], width, name, "", false, false);
+}
+
+void SpecialFunctionHandler::handleTraceParamFPtr(ExecutionState &state,
+                                                  KInstruction *target,
+                                                  std::vector<ref<Expr> > &arguments) {
+  std::string name = readStringAtAddress(state, arguments[1]);
+  state.traceArgFunPtr(arguments[0], name);
+}
+
+void SpecialFunctionHandler::handleForgetAll
+(ExecutionState &state, KInstruction *target, std::vector<ref<Expr> > &arguments) {
+  state.constraints.clear();
+  state.symbolizeConcretes();
+}
+
+void SpecialFunctionHandler::handleInduceInvariants
+(ExecutionState &state, KInstruction *target, std::vector<ref<Expr> > &arguments) {
+  state.induceInvariantsForThisLoop(target);
+}
+
+void SpecialFunctionHandler::handleForbidAccess
+(ExecutionState &state, KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  if (!isa<klee::ConstantExpr>(arguments[0])) {
+    executor.terminateStateOnError
+      (state, "Symbolic address for klee_forbid_access is not supported",
+       Executor::Unhandled);
+    return;
+  }
+  if (!isa<klee::ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError
+      (state, "Symbolic width for klee_forbid_access is not supported",
+       Executor::Unhandled);
+    return;
+  }
+  ref<ConstantExpr> addr = cast<klee::ConstantExpr>(arguments[0]);
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  std::string message = readStringAtAddress(state, arguments[2]);
+
+  ObjectPair op;
+  bool success = state.addressSpace.resolveOne(addr, op);
+  if (!success) {
+    executor.terminateStateOnError
+      (state, "The address does not exist.", Executor::User);
+    return;
+  }
+  const MemoryObject *mo = op.first;
+  if (mo->size != width) {
+    executor.terminateStateOnError
+      (state, "The provided size does not match the size of the object.",
+       Executor::User);
+    return;
+  }
+  const ObjectState *os = op.second;
+  if (os->readOnly) {
+    executor.terminateStateOnError
+      (state, "The object is readonly, can not render it inaccessible",
+       Executor::User);
+    return;
+  }
+  if (!os->isAccessible()) {
+    executor.terminateStateOnError
+      (state, "The object is already inaccessible.",
+       Executor::User);
+    return;
+  }
+  ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+  wos->forbidAccess(message);
+}
+
+void SpecialFunctionHandler::handleAllowAccess
+(ExecutionState &state, KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  if (!isa<klee::ConstantExpr>(arguments[0])) {
+    executor.terminateStateOnError
+      (state, "Symbolic address for klee_allow_access is not supported",
+       Executor::Unhandled);
+    return;
+  }
+  if (!isa<klee::ConstantExpr>(arguments[1])) {
+    executor.terminateStateOnError
+      (state, "Symbolic width for klee_allow_access is not supported",
+       Executor::Unhandled);
+    return;
+  }
+  ref<ConstantExpr> addr = cast<klee::ConstantExpr>(arguments[0]);
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+
+  ObjectPair op;
+  bool success = state.addressSpace.resolveOne(addr, op);
+  if (!success) {
+    executor.terminateStateOnError
+      (state, "The address does not exist.", Executor::User);
+    return;
+  }
+  const MemoryObject *mo = op.first;
+  if (mo->size != width) {
+    executor.terminateStateOnError
+      (state, "The provided size does not match the size of the object.",
+       Executor::User);
+    return;
+  }
+  const ObjectState *os = op.second;
+  if (os->isAccessible()) {
+    executor.terminateStateOnError
+      (state, "The object is already accessible.",
+       Executor::User);
+    return;
+  }
+  state.addressSpace.allowAccess(mo, os);
+}
+
+void SpecialFunctionHandler::handleDumpConstraints
+(ExecutionState &state, KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  state.dumpConstraints();
+}
+
+void SpecialFunctionHandler::handleTraceRet(ExecutionState &state,
+                                            KInstruction *target,
+                                            std::vector<ref<Expr> > &arguments) {
+  state.traceRet();
+}
+
+void SpecialFunctionHandler::handleTraceRetPtr(ExecutionState &state,
+                                               KInstruction *target,
+                                               std::vector<ref<Expr> > &arguments) {
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[0]))->getZExtValue();
+  width = width * 8;
+  state.traceRetPtr(width, true);
+}
+
+void SpecialFunctionHandler::handleTraceRetJustPtr(ExecutionState &state,
+                                                   KInstruction *target,
+                                                   std::vector<ref<Expr> >
+                                                   &arguments) {
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[0]))->getZExtValue();
+  width = width * 8;
+  state.traceRetPtr(width, false);
+}
+
+void SpecialFunctionHandler::handleTraceRetPtrField(ExecutionState &state,
+                                                    KInstruction *target,
+                                                    std::vector<ref<Expr> > &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[0]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[2]);
+  width = width * 8;//Convert to bits.
+  state.traceRetPtrField(offset, width, name, true);
+}
+
+void SpecialFunctionHandler::handleTraceRetPtrFieldJustPtr
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[0]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[2]);
+  width = width * 8;//Convert to bits.
+  state.traceRetPtrField(offset, width, name, false);
+}
+
+void SpecialFunctionHandler::handleTraceRetPtrNestedField
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  int base_offset = (cast<klee::ConstantExpr>(arguments[0]))->getZExtValue();
+  int offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[3]);
+  width = width * 8;//Convert to bits.
+  state.traceRetPtrNestedField(base_offset, offset, width, name);
+}
+
+void SpecialFunctionHandler::handleTraceExtraPtr(ExecutionState &state,
+                                                 KInstruction *target,
+                                                 std::vector<ref<Expr> >
+                                                 &arguments) {
+  assert(isa<klee::ConstantExpr>(arguments[1]) && "Width must be a static constant.");
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  std::string name = readStringAtAddress(state, arguments[2]);
+  std::string type = readStringAtAddress(state, arguments[3]);
+
+  bool trace_in = true, trace_out = true;
+  size_t direction = (cast<klee::ConstantExpr>(arguments[4]))->getZExtValue();
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+        Executor::User);
+      return;
+  }
+
+  size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
+  state.traceExtraPtr(ptr, width, name, type, trace_in, trace_out);
+}
+
+
+void SpecialFunctionHandler::handleTraceParamPtrNestedField
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  int base_offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  int offset = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[3]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[4]);
+  width = width * 8;//Convert to bits.
+  state.traceArgPtrNestedField(arguments[0], base_offset, offset, width, name, true, true);
+}
+
+void SpecialFunctionHandler::handleTraceParamPtrNestedFieldDirected
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> > &arguments) {
+  int base_offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  int offset = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[3]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[4]);
+  width = width * 8;//Convert to bits.
+
+  bool trace_in = true, trace_out = true;
+  size_t direction = (cast<klee::ConstantExpr>(arguments[5]))->getZExtValue();
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+        Executor::User);
+      return;
+  }
+
+  state.traceArgPtrNestedField(arguments[0], base_offset, offset, width, name, trace_in, trace_out);
+}
+
+void SpecialFunctionHandler::handleTraceParamPtrField(ExecutionState &state,
+                                                      KInstruction *target,
+                                                      std::vector<ref<Expr> >
+                                                      &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[3]);
+  width = width * 8;//Convert to bits.
+  state.traceArgPtrField(arguments[0], offset, width, name, true, true);
+}
+
+void SpecialFunctionHandler::handleTraceParamPtrFieldDirected(ExecutionState &state,
+                                                              KInstruction *target,
+                                                              std::vector<ref<Expr> >
+                                                              &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[3]);
+  width = width * 8;//Convert to bits.
+  size_t direction = (cast<klee::ConstantExpr>(arguments[4]))->getZExtValue();
+  bool trace_in = false, trace_out = false;
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+         Executor::User);
+      return;
+  }
+  state.traceArgPtrField(arguments[0], offset, width, name, trace_in, trace_out);
+}
+
+void SpecialFunctionHandler::handleTraceExtraPtrField(ExecutionState &state,
+                                                      KInstruction *target,
+                                                      std::vector<ref<Expr> >
+                                                      &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[3]);
+  width = width * 8;//Convert to bits.
+  size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
+
+  bool trace_in = true, trace_out = true;
+  size_t direction = (cast<klee::ConstantExpr>(arguments[4]))->getZExtValue();
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+        Executor::User);
+      return;
+  }
+
+  state.traceExtraPtrField(ptr, offset, width, name, trace_in, trace_out);
+}
+
+void SpecialFunctionHandler::handleTraceExtraPtrNestedField
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> >
+ &arguments) {
+  size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
+  int base_offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  int offset = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[3]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[4]);
+  width = width * 8;//Convert to bits.
+
+  bool trace_in = true, trace_out = true;
+  size_t direction = (cast<klee::ConstantExpr>(arguments[5]))->getZExtValue();
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+        Executor::User);
+      return;
+  }
+
+  state.traceExtraPtrNestedField(ptr, base_offset, offset, width, name, trace_in, trace_out);
+}
+
+void SpecialFunctionHandler::handleTraceExtraPtrNestedNestedField
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> >
+ &arguments) {
+  size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
+  int base_base_offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  int base_offset = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  int offset = (cast<klee::ConstantExpr>(arguments[3]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[4]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[5]);
+  width = width * 8;//Convert to bits.
+
+  bool trace_in = true, trace_out = true;
+  size_t direction = (cast<klee::ConstantExpr>(arguments[6]))->getZExtValue();
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+        Executor::User);
+      return;
+  }
+
+  state.traceExtraPtrNestedNestedField(ptr, base_base_offset,
+                                       base_offset, offset, width, name, trace_in, trace_out);
+}
+
+void SpecialFunctionHandler::handleTraceExtraPtrFieldJustPtr
+(ExecutionState &state,
+ KInstruction *target,
+ std::vector<ref<Expr> >
+ &arguments) {
+  int offset = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[2]))->getZExtValue();
+  std::string name = readStringAtAddress(state, arguments[3]);
+  width = width * 8;//Convert to bits.
+  size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
+  state.traceExtraPtrField(ptr, offset, width, name, false, false);
 }
 
 void SpecialFunctionHandler::handleTraceParamPtrFieldJustPtr

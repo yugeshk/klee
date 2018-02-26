@@ -24,20 +24,19 @@
 #include "klee/Expr.h"
 
 #include "Memory.h"
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Function.h"
-#else
-#include "llvm/Function.h"
-#endif
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <cassert>
 #include <map>
+#include <regex>
 #include <set>
 #include <stdarg.h>
+#include <tuple>
 
 using namespace llvm;
 using namespace klee;
@@ -120,6 +119,9 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     stack(state.stack),
     incomingBBIndex(state.incomingBBIndex),
 
+    readsIntercepts(state.readsIntercepts),
+    writesIntercepts(state.writesIntercepts),
+
     addressSpace(state.addressSpace),
     loopInProcess(state.loopInProcess) ,
     analysedLoops(state.analysedLoops),
@@ -140,6 +142,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     ptreeNode(state.ptreeNode),
     symbolics(state.symbolics),
     arrayNames(state.arrayNames),
+    openMergeStack(state.openMergeStack),
     callPath(state.callPath),
     relevantSymbols(state.relevantSymbols),
     doTrace(state.doTrace)
@@ -180,18 +183,75 @@ void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) {
 ///
 
 std::string ExecutionState::getFnAlias(std::string fn) {
-  std::map < std::string, std::string >::iterator it = fnAliases.find(fn);
-  if (it != fnAliases.end())
-    return it->second;
-  else return "";
+  for (auto& candidate : fnAliases) {
+    if (candidate.isRegex) {
+      if (std::regex_match(fn, candidate.nameRegex)) {
+        return candidate.alias;
+      }
+    } else if (fn == candidate.name) {
+      return candidate.alias;
+    }
+  }
+
+  return "";
 }
 
 void ExecutionState::addFnAlias(std::string old_fn, std::string new_fn) {
-  fnAliases[old_fn] = new_fn;
+  removeFnAlias(old_fn);
+
+  FunctionAlias alias {
+    .isRegex = false,
+    .nameRegex = std::regex(""),
+    .name = old_fn,
+    .alias = new_fn
+  };
+  fnAliases.push_back(alias);
+}
+
+void ExecutionState::addFnRegexAlias(std::string fn_regex, std::string new_fn) {
+  removeFnAlias(fn_regex);
+
+  FunctionAlias alias = {
+    .isRegex = true,
+    .nameRegex = std::regex(fn_regex),
+    .name = fn_regex,
+    .alias = new_fn
+  };
+  fnAliases.push_back(alias);
 }
 
 void ExecutionState::removeFnAlias(std::string fn) {
-  fnAliases.erase(fn);
+  fnAliases.erase(std::remove_if(fnAliases.begin(), fnAliases.end(),
+                                 [fn](FunctionAlias candidate) {
+                                   return candidate.name == fn;
+                                 }),
+                  fnAliases.end());
+}
+
+std::string ExecutionState::getInterceptReader(uint64_t addr) {
+  auto it = readsIntercepts.find(addr);
+  if (it == readsIntercepts.end()) {
+    return "";
+  }
+
+  return it->second;
+}
+
+std::string ExecutionState::getInterceptWriter(uint64_t addr) {
+  auto it = writesIntercepts.find(addr);
+  if (it == writesIntercepts.end()) {
+    return "";
+  }
+
+  return it->second;
+}
+
+void ExecutionState::addReadsIntercept(uint64_t addr, std::string reader) {
+  readsIntercepts[addr] = reader;
+}
+
+void ExecutionState::addWritesIntercept(uint64_t addr, std::string writer) {
+  writesIntercepts[addr] = writer;
 }
 
 /**/
@@ -586,7 +646,8 @@ void ExecutionState::traceArgPtrNestedField(ref<Expr> arg,
                                             int base_offset,
                                             int offset,
                                             Expr::Width width,
-                                            std::string name) {
+                                            std::string name,
+                                            bool trace_in, bool trace_out) {
   assert(!callPath.empty() &&
          callPath.back().f == stack.back().kf->function &&
          "Must trace the function first to trace a particular field.");
@@ -604,12 +665,14 @@ void ExecutionState::traceArgPtrNestedField(ref<Expr> arg,
   descr.width = width;
   descr.name = name;
   size_t base = (cast<ConstantExpr>(arg))->getZExtValue();
-  ref<ConstantExpr> addrExpr = ConstantExpr::alloc(base + base_offset + offset,
-                                                   sizeof(size_t)*8);
-  descr.inVal = readMemoryChunk(addrExpr, width, true);
+  if (trace_in) {
+    ref<ConstantExpr> addrExpr = ConstantExpr::alloc(base + base_offset + offset,
+                                                     sizeof(size_t)*8);
+    descr.inVal = readMemoryChunk(addrExpr, width, true);
+  }
   descr.addr = base + base_offset + offset;
-  descr.doTraceValueIn = true;
-  descr.doTraceValueOut = true;
+  descr.doTraceValueIn = trace_in;
+  descr.doTraceValueOut = trace_out;
   argInfo->pointee.fields[base_offset].fields[offset] = descr;
 }
 
@@ -618,7 +681,7 @@ void ExecutionState::traceExtraPtrNestedField(size_t ptr,
                                               int offset,
                                               Expr::Width width,
                                               std::string name,
-                                              bool doTraceValue) {
+                                              bool trace_in, bool trace_out) {
   assert(!callPath.empty() &&
          callPath.back().f == stack.back().kf->function &&
          "Must trace the function first to trace a particular field.");
@@ -635,14 +698,14 @@ void ExecutionState::traceExtraPtrNestedField(size_t ptr,
   descr.width = width;
   descr.name = name;
   size_t base = ptr;
-  if (doTraceValue) {
+  if (trace_in) {
     ref<ConstantExpr> addrExpr = ConstantExpr::alloc(base + base_offset + offset,
                                                      sizeof(size_t)*8);
     descr.inVal = readMemoryChunk(addrExpr, width, true);
   }
   descr.addr = base + base_offset + offset;
-  descr.doTraceValueIn = doTraceValue;
-  descr.doTraceValueOut = doTraceValue;
+  descr.doTraceValueIn = trace_in;
+  descr.doTraceValueOut = trace_out;
   extraPtr->pointee.fields[base_offset].fields[offset] = descr;
 }
 
@@ -652,7 +715,7 @@ void ExecutionState::traceExtraPtrNestedNestedField(size_t ptr,
                                                     int offset,
                                                     Expr::Width width,
                                                     std::string name,
-                                                    bool doTraceValue) {
+                                                    bool trace_in, bool trace_out) {
   assert(!callPath.empty() &&
          callPath.back().f == stack.back().kf->function &&
          "Must trace the function first to trace a particular field.");
@@ -678,13 +741,13 @@ void ExecutionState::traceExtraPtrNestedNestedField(size_t ptr,
   descr.name = name;
   size_t base = ptr;
   descr.addr = base + base_base_offset + base_offset + offset;
-  if (doTraceValue) {
+  if (trace_in) {
     ref<ConstantExpr> addrExpr = ConstantExpr::alloc(descr.addr,
                                                      sizeof(size_t)*8);
     descr.inVal = readMemoryChunk(addrExpr, width, true);
   }
-  descr.doTraceValueIn = doTraceValue;
-  descr.doTraceValueOut = doTraceValue;
+  descr.doTraceValueIn = trace_in;
+  descr.doTraceValueOut = trace_out;
   extraPtr->pointee.
     fields[base_base_offset].
     fields[base_offset].
@@ -695,7 +758,7 @@ void ExecutionState::traceExtraPtrNestedNestedField(size_t ptr,
 void ExecutionState::traceExtraPtr(size_t ptr, Expr::Width width,
                                    std::string name,
                                    std::string type,
-                                   bool tracePointee) {
+                                   bool trace_in, bool trace_out) {
   traceRet();
   callPath.back().extraPtrs.
     insert(std::pair<const size_t, CallExtraPtr>(ptr, CallExtraPtr()));
@@ -704,12 +767,18 @@ void ExecutionState::traceExtraPtr(size_t ptr, Expr::Width width,
   extraPtr->name = name;
   extraPtr->pointee.width = width;
   extraPtr->pointee.type = type;
-  extraPtr->pointee.inVal =
-    constraints.simplifyExpr
-    (readMemoryChunk(ConstantExpr::alloc(ptr, sizeof(size_t)*8), width, true));
+  extraPtr->pointee.doTraceValueIn = trace_in;
+  extraPtr->pointee.doTraceValueOut = trace_out;
   extraPtr->accessibleIn =
     isAccessibleAddr(ConstantExpr::alloc(ptr, 8*sizeof(size_t)));
-  SymbolSet indirectSymbols = GetExprSymbols::visit(extraPtr->pointee.inVal);
+
+  SymbolSet indirectSymbols;
+  if (trace_in) {
+    extraPtr->pointee.inVal =
+      constraints.simplifyExpr
+      (readMemoryChunk(ConstantExpr::alloc(ptr, sizeof(size_t)*8), width, true));
+    indirectSymbols = GetExprSymbols::visit(extraPtr->pointee.inVal);
+  }
   std::vector<ref<Expr> > constrs = relevantConstraints(indirectSymbols);
   callPath.back().callContext.insert(callPath.back().callContext.end(),
                                      constrs.begin(), constrs.end());
@@ -719,7 +788,7 @@ void ExecutionState::traceExtraPtrField(size_t ptr,
                                         int offset,
                                         Expr::Width width,
                                         std::string name,
-                                        bool doTraceValue) {
+                                        bool trace_in, bool trace_out) {
   assert(!callPath.empty() &&
          callPath.back().f == stack.back().kf->function &&
          "Must trace the function first to trace a particular field.");
@@ -730,14 +799,14 @@ void ExecutionState::traceExtraPtrField(size_t ptr,
   descr.width = width;
   descr.name = name;
   size_t base = ptr;
-  if (doTraceValue) {
+  if (trace_in) {
     ref<ConstantExpr> addrExpr = ConstantExpr::alloc(base + offset,
                                                      sizeof(size_t)*8);
     descr.inVal = readMemoryChunk(addrExpr, width, true);
   }
   descr.addr = base + offset;
-  descr.doTraceValueIn = doTraceValue;
-  descr.doTraceValueOut = doTraceValue;
+  descr.doTraceValueIn = trace_in;
+  descr.doTraceValueOut = trace_out;
   extraPtr->pointee.fields[offset] = descr;
 }
 
@@ -1113,12 +1182,12 @@ CallArg* CallInfo::getCallArgPtrp(ref<Expr> ptr) {
 
 bool equalContexts(const std::vector<ref<Expr> >& a,
                    const std::vector<ref<Expr> >& b) {
-  //TODO: naive comparison. should query the solver for the equality of conjunctions.
+  // TODO: Structural-only comparison here, ideally we'd ask the solver about it
   if (a.size() != b.size()) return false;
   for (unsigned i = 0; i < a.size(); ++i) {
     bool notFound = true;
     for (unsigned j = 0; j < b.size(); ++j) {
-      if (*a[i] == *b[j]) {
+      if ((*a[i]).compare(*b[j]) == 0) {
         notFound = false;
         break;
       }
@@ -1128,7 +1197,7 @@ bool equalContexts(const std::vector<ref<Expr> >& a,
   for (unsigned i = 0; i < b.size(); ++i) {
     bool notFound = true;
     for (unsigned j = 0; j < a.size(); ++j) {
-      if (*a[i] == *b[j]) {
+      if ((*a[i]).compare(*b[j]) == 0) {
         notFound = false;
         break;
       }
@@ -1162,19 +1231,20 @@ bool CallInfo::eq(const CallInfo& other) const {
 bool CallInfo::sameInvocation(const CallInfo* other) const {
   //TODO: compare assumptions as well.
   if (args.size() != other->args.size()) return false;
-  if (extraPtrs.size() != other->extraPtrs.size()) return false;
+  // HACK: Not comparing extra ptrs for now, since depending on result value an extra ptr may exist or not
+  //if (extraPtrs.size() != other->extraPtrs.size()) return false;
   if (f != other->f) return false;
   for (unsigned i = 0; i < args.size(); ++i) {
     if (!args[i].sameInvocationValue(other->args[i])) return false;
   }
-  std::map<size_t, CallExtraPtr>::const_iterator i = extraPtrs.begin(),
+  /*std::map<size_t, CallExtraPtr>::const_iterator i = extraPtrs.begin(),
     e = extraPtrs.end();
   for (; i != e; ++i) {
     std::map<size_t, CallExtraPtr>::const_iterator it =
       other->extraPtrs.find(i->first);
     if (it == other->extraPtrs.end() ||
         !it->second.sameInvocationValue(i->second)) return false;
-  }
+  }*/
   return equalContexts(callContext, other->callContext);
 }
 

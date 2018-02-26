@@ -41,11 +41,8 @@ namespace llvm {
   class Function;
   class GlobalValue;
   class Instruction;
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-  class TargetData;
-#else
+  class LLVMContext;
   class DataLayout;
-#endif
   class Twine;
   class Value;
 }
@@ -72,6 +69,7 @@ namespace klee {
   class StatsTracker;
   class TimingSolver;
   class TreeStreamWriter;
+  class MergeHandler;
   template<class T> class ref;
 
 
@@ -81,13 +79,12 @@ namespace klee {
   /// removedStates, and haltExecution, among others.
 
 class Executor : public Interpreter {
-  friend class BumpMergingSearcher;
-  friend class MergingSearcher;
   friend class RandomPathSearcher;
   friend class OwningSearcher;
   friend class WeightedRandomSearcher;
   friend class SpecialFunctionHandler;
   friend class StatsTracker;
+  friend class MergeHandler;
 
 public:
   class Timer {
@@ -104,6 +101,7 @@ public:
   enum TerminateReason {
     Abort,
     Assert,
+    BadVectorAccess,
     Exec,
     External,
     Free,
@@ -146,6 +144,13 @@ private:
   /// \invariant \ref removedStates is a subset of \ref states. 
   /// \invariant \ref addedStates and \ref removedStates are disjoint.
   std::vector<ExecutionState *> removedStates;
+
+  /// Used to track states that are not terminated, but should not
+  /// be scheduled by the searcher.
+  std::vector<ExecutionState *> pausedStates;
+  /// States that were 'paused' from scheduling, that now may be
+  /// scheduled again
+  std::vector<ExecutionState *> continuedStates;
 
   /// When non-empty the Executor is running in "seed" mode. The
   /// states in this map will be executed in an arbitrary order
@@ -358,7 +363,17 @@ private:
                     ExecutionState &state,
                     ref<Expr> value);
 
-  ref<klee::ConstantExpr> evalConstantExpr(const llvm::ConstantExpr *ce);
+  /// Evaluates an LLVM constant expression.  The optional argument ki
+  /// is the instruction where this constant was encountered, or NULL
+  /// if not applicable/unavailable.
+  ref<klee::ConstantExpr> evalConstantExpr(const llvm::ConstantExpr *c,
+					   const KInstruction *ki = NULL);
+
+  /// Evaluates an LLVM constant.  The optional argument ki is the
+  /// instruction where this constant was encountered, or NULL if
+  /// not applicable/unavailable.
+  ref<klee::ConstantExpr> evalConstant(const llvm::Constant *c,
+				       const KInstruction *ki = NULL);
 
   /// Return a unique constant value for the given expression in the
   /// given state, if it has one (i.e. it provably only has a single
@@ -388,6 +403,10 @@ private:
 
   bool shouldExitOn(enum TerminateReason termReason);
 
+  // remove state from searcher only
+  void pauseState(ExecutionState& state);
+  // add state to searcher only
+  void continueState(ExecutionState& state);
   // remove state from queue and delete
   void terminateState(ExecutionState &state);
   // call exit handler and terminate state
@@ -441,15 +460,13 @@ private:
   void doDumpStates();
 
 public:
-  Executor(const InterpreterOptions &opts, InterpreterHandler *ie);
+  Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
+      InterpreterHandler *ie);
   virtual ~Executor();
 
   const InterpreterHandler& getHandler() {
     return *interpreterHandler;
   }
-
-  // XXX should just be moved out to utility module
-  ref<klee::ConstantExpr> evalConstant(const llvm::Constant *c);
 
   virtual void setPathWriter(TreeStreamWriter *tsw) {
     pathWriter = tsw;
@@ -492,6 +509,8 @@ public:
     inhibitForking = value;
   }
 
+  void prepareForEarlyExit();
+
   /*** State accessor methods ***/
 
   virtual unsigned getPathStreamID(const ExecutionState &state);
@@ -511,7 +530,8 @@ public:
   virtual void getCoveredLines(const ExecutionState &state,
                                std::map<const std::string*, std::set<unsigned> > &res);
 
-  Expr::Width getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const;
+  Expr::Width getWidthForLLVMType(llvm::Type *type) const;
+  size_t getAllocationAlignment(const llvm::Value *allocSite) const;
 };
 
 void FillCallInfoOutput(llvm::Function* f,

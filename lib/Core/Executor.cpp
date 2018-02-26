@@ -44,11 +44,11 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Support/FloatEvaluation.h"
+#include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Internal/System/MemoryUsage.h"
 #include "klee/SolverStats.h"
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
@@ -60,26 +60,11 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/TypeBuilder.h"
-#else
-#include "llvm/Attributes.h"
-#include "llvm/BasicBlock.h"
-#include "llvm/Constants.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-#include "llvm/Target/TargetData.h"
-#else
-#include "llvm/DataLayout.h"
-#include "llvm/TypeBuilder.h"
-#endif
-#endif
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -124,12 +109,7 @@ namespace {
   DumpStatesOnHalt("dump-states-on-halt",
                    cl::init(true),
 		   cl::desc("Dump test cases for all active states on exit (default=on)"));
- 
-  cl::opt<bool>
-  RandomizeFork("randomize-fork",
-                cl::init(false),
-		cl::desc("Randomly swap the true and false states on a fork (default=off)"));
- 
+  
   cl::opt<bool>
   AllowExternalSymCalls("allow-external-sym-calls",
                         cl::init(false),
@@ -145,7 +125,7 @@ namespace {
     FILE_COMPACT ///
   };
 
-  llvm::cl::list<PrintDebugInstructionsType> DebugPrintInstructions(
+  llvm::cl::bits<PrintDebugInstructionsType> DebugPrintInstructions(
       "debug-print-instructions",
       llvm::cl::desc("Log instructions during execution."),
       llvm::cl::values(
@@ -164,8 +144,8 @@ namespace {
                                            "inst_id]"),
           clEnumValN(FILE_COMPACT, "compact:file",
                      "Log all instructions to file instructions.txt in format "
-                     "[inst_id]"),
-          clEnumValEnd),
+                     "[inst_id]")
+          KLEE_LLVM_CL_VAL_END),
       llvm::cl::CommaSeparated);
 #ifdef HAVE_ZLIB_H
   cl::opt<bool> DebugCompressInstructions(
@@ -293,6 +273,7 @@ namespace {
 		  cl::values(
 		    clEnumValN(Executor::Abort, "Abort", "The program crashed"),
 		    clEnumValN(Executor::Assert, "Assert", "An assertion was hit"),
+		    clEnumValN(Executor::BadVectorAccess, "BadVectorAccess", "Vector accessed out of bounds"),
 		    clEnumValN(Executor::Exec, "Exec", "Trying to execute an unexpected instruction"),
 		    clEnumValN(Executor::External, "External", "External objects referenced"),
 		    clEnumValN(Executor::Free, "Free", "Freeing invalid memory"),
@@ -307,7 +288,7 @@ namespace {
 		    clEnumValEnd),
 		  cl::ZeroOrMore);
 
-  cl::opt<unsigned int>
+  cl::opt<unsigned long long>
   StopAfterNInstructions("stop-after-n-instructions",
                          cl::desc("Stop execution after specified number of instructions (default=0 (off))"),
                          cl::init(0));
@@ -341,6 +322,7 @@ namespace klee {
 const char *Executor::TerminateReasonNames[] = {
   [ Abort ] = "abort",
   [ Assert ] = "assert",
+  [ BadVectorAccess ] = "bad_vector_access",
   [ Exec ] = "exec",
   [ External ] = "external",
   [ Free ] = "free",
@@ -354,9 +336,10 @@ const char *Executor::TerminateReasonNames[] = {
   [ Unhandled ] = "xxx",
 };
 
-Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih)
+Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
+    InterpreterHandler *ih)
     : Interpreter(opts), kmodule(0), interpreterHandler(ih), searcher(0),
-      externalDispatcher(new ExternalDispatcher()), statsTracker(0),
+      externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0),
       pathWriter(0), symPathWriter(0), specialFunctionHandler(0),
       processTree(0), replayKTest(0), replayPath(0), usingSeeds(0),
       atMemoryLimit(false), inhibitForking(false), haltExecution(false),
@@ -369,22 +352,24 @@ Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih)
   if (coreSolverTimeout) UseForkedCoreSolver = true;
   Solver *coreSolver = klee::createCoreSolver(CoreSolverToUse);
   if (!coreSolver) {
-    llvm::errs() << "Failed to create core solver\n";
-    exit(1);
+    klee_error("Failed to create core solver\n");
   }
+
   Solver *solver = constructSolverChain(
       coreSolver,
       interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
       interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
-      interpreterHandler->getOutputFilename(ALL_QUERIES_PC_FILE_NAME),
-      interpreterHandler->getOutputFilename(SOLVER_QUERIES_PC_FILE_NAME));
+      interpreterHandler->getOutputFilename(ALL_QUERIES_KQUERY_FILE_NAME),
+      interpreterHandler->getOutputFilename(SOLVER_QUERIES_KQUERY_FILE_NAME));
 
   this->solver = new TimingSolver(solver, EqualitySubstitution);
   memory = new MemoryManager(&arrayCache);
 
-  if (optionIsSet(DebugPrintInstructions, FILE_ALL) ||
-      optionIsSet(DebugPrintInstructions, FILE_COMPACT) ||
-      optionIsSet(DebugPrintInstructions, FILE_SRC)) {
+  initializeSearchOptions();
+
+  if (DebugPrintInstructions.isSet(FILE_ALL) ||
+      DebugPrintInstructions.isSet(FILE_COMPACT) ||
+      DebugPrintInstructions.isSet(FILE_SRC)) {
     std::string debug_file_name =
         interpreterHandler->getOutputFilename("instructions.txt");
     std::string ErrorInfo;
@@ -392,9 +377,15 @@ Executor::Executor(const InterpreterOptions &opts, InterpreterHandler *ih)
     if (!DebugCompressInstructions) {
 #endif
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 5)
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 6)
+    std::error_code ec;
+    debugInstFile = new llvm::raw_fd_ostream(debug_file_name.c_str(), ec,
+                                             llvm::sys::fs::OpenFlags::F_Text);
+    if (ec)
+	    ErrorInfo = ec.message();
+#elif LLVM_VERSION_CODE >= LLVM_VERSION(3, 5)
     debugInstFile = new llvm::raw_fd_ostream(debug_file_name.c_str(), ErrorInfo,
-                                             llvm::sys::fs::OpenFlags::F_Text),
+                                             llvm::sys::fs::OpenFlags::F_Text);
 #else
     debugInstFile =
         new llvm::raw_fd_ostream(debug_file_name.c_str(), ErrorInfo);
@@ -420,11 +411,7 @@ const Module *Executor::setModule(llvm::Module *module,
   kmodule = new KModule(module);
 
   // Initialize the context.
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-  TargetData *TD = kmodule->targetData;
-#else
   DataLayout *TD = kmodule->targetData;
-#endif
   Context::initialize(TD->isLittleEndian(),
                       (Expr::Width) TD->getPointerSizeInBits());
 
@@ -447,21 +434,16 @@ const Module *Executor::setModule(llvm::Module *module,
 Executor::~Executor() {
   delete memory;
   delete externalDispatcher;
-  if (processTree)
-    delete processTree;
-  if (specialFunctionHandler)
-    delete specialFunctionHandler;
-  if (statsTracker)
-    delete statsTracker;
+  delete processTree;
+  delete specialFunctionHandler;
+  delete statsTracker;
   delete solver;
   delete kmodule;
   while(!timers.empty()) {
     delete timers.back();
     timers.pop_back();
   }
-  if (debugInstFile) {
-    delete debugInstFile;
-  }
+  delete debugInstFile;
 }
 
 /***/
@@ -469,11 +451,7 @@ Executor::~Executor() {
 void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
                                       const Constant *c, 
                                       unsigned offset) {
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-  TargetData *targetData = kmodule->targetData;
-#else
   DataLayout *targetData = kmodule->targetData;
-#endif
   if (const ConstantVector *cp = dyn_cast<ConstantVector>(c)) {
     unsigned elementSize =
       targetData->getTypeStoreSize(cp->getType()->getElementType());
@@ -496,7 +474,6 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
     for (unsigned i=0, e=cs->getNumOperands(); i != e; ++i)
       initializeGlobalObject(state, os, cs->getOperand(i), 
 			     offset + sl->getElementOffset(i));
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
   } else if (const ConstantDataSequential *cds =
                dyn_cast<ConstantDataSequential>(c)) {
     unsigned elementSize =
@@ -504,7 +481,6 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
     for (unsigned i=0, e=cds->getNumElements(); i != e; ++i)
       initializeGlobalObject(state, os, cds->getElementAsConstant(i),
                              offset + i*elementSize);
-#endif
   } else if (!isa<UndefValue>(c)) {
     unsigned StoreBits = targetData->getTypeStoreSizeInBits(c->getType());
     ref<ConstantExpr> C = evalConstant(c);
@@ -539,16 +515,12 @@ void Executor::initializeGlobals(ExecutionState &state) {
 
   if (m->getModuleInlineAsm() != "")
     klee_warning("executable has module level assembly (ignoring)");
-#if LLVM_VERSION_CODE < LLVM_VERSION(3, 3)
-  assert(m->lib_begin() == m->lib_end() &&
-         "XXX do not support dependent libraries");
-#endif
   // represent function globals using the address of the actual llvm function
   // object. given that we use malloc to allocate memory in states this also
   // ensures that we won't conflict. we don't need to allocate a memory object
   // since reading/writing via a function pointer is unsupported anyway.
   for (Module::iterator i = m->begin(), ie = m->end(); i != ie; ++i) {
-    Function *f = i;
+    Function *f = &*i;
     ref<ConstantExpr> addr(0);
 
     // If the symbol has external weak linkage then it is implicitly
@@ -602,13 +574,15 @@ void Executor::initializeGlobals(ExecutionState &state) {
   for (Module::const_global_iterator i = m->global_begin(),
          e = m->global_end();
        i != e; ++i) {
+    const GlobalVariable *v = &*i;
+    size_t globalObjectAlignment = getAllocationAlignment(v);
     if (i->isDeclaration()) {
       // FIXME: We have no general way of handling unknown external
       // symbols. If we really cared about making external stuff work
       // better we could support user definition, or use the EXE style
       // hack where we check the object file information.
 
-      LLVM_TYPE_Q Type *ty = i->getType()->getElementType();
+      Type *ty = i->getType()->getElementType();
       uint64_t size = 0;
       if (ty->isSized()) {
 	size = kmodule->targetData->getTypeStoreSize(ty);
@@ -633,10 +607,12 @@ void Executor::initializeGlobals(ExecutionState &state) {
 			(int)i->getName().size(), i->getName().data());
       }
 
-      MemoryObject *mo = memory->allocate(size, false, true, i);
+      MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
+                                          /*isGlobal=*/true, /*allocSite=*/v,
+                                          /*alignment=*/globalObjectAlignment);
       ObjectState *os = bindObjectInState(state, mo, false);
-      globalObjects.insert(std::make_pair(i, mo));
-      globalAddresses.insert(std::make_pair(i, mo->getBaseExpr()));
+      globalObjects.insert(std::make_pair(v, mo));
+      globalAddresses.insert(std::make_pair(v, mo->getBaseExpr()));
 
       // Program already running = object already initialized.  Read
       // concrete value and write it to our copy.
@@ -655,14 +631,16 @@ void Executor::initializeGlobals(ExecutionState &state) {
           os->write8(offset, ((unsigned char*)addr)[offset]);
       }
     } else {
-      LLVM_TYPE_Q Type *ty = i->getType()->getElementType();
+      Type *ty = i->getType()->getElementType();
       uint64_t size = kmodule->targetData->getTypeStoreSize(ty);
-      MemoryObject *mo = memory->allocate(size, false, true, &*i);
+      MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
+                                          /*isGlobal=*/true, /*allocSite=*/v,
+                                          /*alignment=*/globalObjectAlignment);
       if (!mo)
         llvm::report_fatal_error("out of memory");
       ObjectState *os = bindObjectInState(state, mo, false);
-      globalObjects.insert(std::make_pair(i, mo));
-      globalAddresses.insert(std::make_pair(i, mo->getBaseExpr()));
+      globalObjects.insert(std::make_pair(v, mo));
+      globalAddresses.insert(std::make_pair(v, mo->getBaseExpr()));
 
       if (!i->hasInitializer())
           os->initializeToRandom();
@@ -674,7 +652,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
        i != ie; ++i) {
     // Map the alias to its aliasee's address. This works because we have
     // addresses for everything, even undefined functions. 
-    globalAddresses.insert(std::make_pair(i, evalConstant(i->getAliasee())));
+    globalAddresses.insert(std::make_pair(&*i, evalConstant(i->getAliasee())));
   }
 
   // once all objects are allocated, do the actual initialization
@@ -682,7 +660,8 @@ void Executor::initializeGlobals(ExecutionState &state) {
          e = m->global_end();
        i != e; ++i) {
     if (i->hasInitializer()) {
-      MemoryObject *mo = globalObjects.find(i)->second;
+      const GlobalVariable *v = &*i;
+      MemoryObject *mo = globalObjects.find(v)->second;
       const ObjectState *os = state.addressSpace.findObject(mo);
       assert(os);
       ObjectState *wos = state.addressSpace.getWriteable(mo, os);
@@ -937,9 +916,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     falseState = trueState->branch();
     addedStates.push_back(falseState);
 
-    if (RandomizeFork && theRNG.getBool())
-      std::swap(trueState, falseState);
-
     if (it != seedMap.end()) {
       std::vector<SeedInfo> seeds = it->second;
       it->second.clear();
@@ -980,14 +956,18 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     falseState->ptreeNode = res.first;
     trueState->ptreeNode = res.second;
 
-    if (!isInternal) {
-      if (pathWriter) {
-        falseState->pathOS = pathWriter->open(current.pathOS);
+    if (pathWriter) {
+      // Need to update the pathOS.id field of falseState, otherwise the same id
+      // is used for both falseState and trueState.
+      falseState->pathOS = pathWriter->open(current.pathOS);
+      if (!isInternal) {
         trueState->pathOS << "1";
         falseState->pathOS << "0";
-      }      
-      if (symPathWriter) {
-        falseState->symPathOS = symPathWriter->open(current.symPathOS);
+      }
+    }
+    if (symPathWriter) {
+      falseState->symPathOS = symPathWriter->open(current.symPathOS);
+      if (!isInternal) {
         trueState->symPathOS << "1";
         falseState->symPathOS << "0";
       }
@@ -1039,67 +1019,6 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
   if (ivcEnabled)
     doImpliedValueConcretization(state, condition, 
                                  ConstantExpr::alloc(1, Expr::Bool));
-}
-
-ref<klee::ConstantExpr> Executor::evalConstant(const Constant *c) {
-  if (const llvm::ConstantExpr *ce = dyn_cast<llvm::ConstantExpr>(c)) {
-    return evalConstantExpr(ce);
-  } else {
-    if (const ConstantInt *ci = dyn_cast<ConstantInt>(c)) {
-      return ConstantExpr::alloc(ci->getValue());
-    } else if (const ConstantFP *cf = dyn_cast<ConstantFP>(c)) {      
-      return ConstantExpr::alloc(cf->getValueAPF().bitcastToAPInt());
-    } else if (const GlobalValue *gv = dyn_cast<GlobalValue>(c)) {
-      return globalAddresses.find(gv)->second;
-    } else if (isa<ConstantPointerNull>(c)) {
-      return Expr::createPointer(0);
-    } else if (isa<UndefValue>(c) || isa<ConstantAggregateZero>(c)) {
-      return ConstantExpr::create(0, getWidthForLLVMType(c->getType()));
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
-    } else if (const ConstantDataSequential *cds =
-                 dyn_cast<ConstantDataSequential>(c)) {
-      std::vector<ref<Expr> > kids;
-      for (unsigned i = 0, e = cds->getNumElements(); i != e; ++i) {
-        ref<Expr> kid = evalConstant(cds->getElementAsConstant(i));
-        kids.push_back(kid);
-      }
-      ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
-      return cast<ConstantExpr>(res);
-#endif
-    } else if (const ConstantStruct *cs = dyn_cast<ConstantStruct>(c)) {
-      const StructLayout *sl = kmodule->targetData->getStructLayout(cs->getType());
-      llvm::SmallVector<ref<Expr>, 4> kids;
-      for (unsigned i = cs->getNumOperands(); i != 0; --i) {
-        unsigned op = i-1;
-        ref<Expr> kid = evalConstant(cs->getOperand(op));
-
-        uint64_t thisOffset = sl->getElementOffsetInBits(op),
-                 nextOffset = (op == cs->getNumOperands() - 1)
-                              ? sl->getSizeInBits()
-                              : sl->getElementOffsetInBits(op+1);
-        if (nextOffset-thisOffset > kid->getWidth()) {
-          uint64_t paddingWidth = nextOffset-thisOffset-kid->getWidth();
-          kids.push_back(ConstantExpr::create(0, paddingWidth));
-        }
-
-        kids.push_back(kid);
-      }
-      ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
-      return cast<ConstantExpr>(res);
-    } else if (const ConstantArray *ca = dyn_cast<ConstantArray>(c)){
-      llvm::SmallVector<ref<Expr>, 4> kids;
-      for (unsigned i = ca->getNumOperands(); i != 0; --i) {
-        unsigned op = i-1;
-        ref<Expr> kid = evalConstant(ca->getOperand(op));
-        kids.push_back(kid);
-      }
-      ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
-      return cast<ConstantExpr>(res);
-    } else {
-      // Constant{Vector}
-      llvm::report_fatal_error("invalid argument to evalConstant()");
-    }
-  }
 }
 
 const Cell& Executor::eval(KInstruction *ki, unsigned index, 
@@ -1227,31 +1146,34 @@ void Executor::executeGetValue(ExecutionState &state,
 
 void Executor::printDebugInstructions(ExecutionState &state) {
   // check do not print
-  if (DebugPrintInstructions.size() == 0)
+  if (DebugPrintInstructions.getBits() == 0)
 	  return;
 
   llvm::raw_ostream *stream = 0;
-  if (optionIsSet(DebugPrintInstructions, STDERR_ALL) ||
-      optionIsSet(DebugPrintInstructions, STDERR_SRC) ||
-      optionIsSet(DebugPrintInstructions, STDERR_COMPACT))
+  if (DebugPrintInstructions.isSet(STDERR_ALL) ||
+      DebugPrintInstructions.isSet(STDERR_SRC) ||
+      DebugPrintInstructions.isSet(STDERR_COMPACT))
     stream = &llvm::errs();
   else
     stream = &debugLogBuffer;
 
-  if (!optionIsSet(DebugPrintInstructions, STDERR_COMPACT) &&
-      !optionIsSet(DebugPrintInstructions, FILE_COMPACT))
-    printFileLine(state, state.pc, *stream);
+  if (!DebugPrintInstructions.isSet(STDERR_COMPACT) &&
+      !DebugPrintInstructions.isSet(FILE_COMPACT)) {
+    (*stream) << "     ";
+    state.pc->printFileLine(*stream);
+    (*stream) << ":";
+  }
 
-  (*stream) << state.pc->info->id;
+  (*stream) << state.pc->info->assemblyLine;
 
-  if (optionIsSet(DebugPrintInstructions, STDERR_ALL) ||
-      optionIsSet(DebugPrintInstructions, FILE_ALL))
+  if (DebugPrintInstructions.isSet(STDERR_ALL) ||
+      DebugPrintInstructions.isSet(FILE_ALL))
     (*stream) << ":" << *(state.pc->inst);
   (*stream) << "\n";
 
-  if (optionIsSet(DebugPrintInstructions, FILE_ALL) ||
-      optionIsSet(DebugPrintInstructions, FILE_COMPACT) ||
-      optionIsSet(DebugPrintInstructions, FILE_SRC)) {
+  if (DebugPrintInstructions.isSet(FILE_ALL) ||
+      DebugPrintInstructions.isSet(FILE_COMPACT) ||
+      DebugPrintInstructions.isSet(FILE_SRC)) {
     debugLogBuffer.flush();
     (*debugInstFile) << debugLogBuffer.str();
     debugBufferString = "";
@@ -1293,7 +1215,7 @@ void Executor::executeCall(ExecutionState &state,
         return;
 
       // FIXME: This is really specific to the architecture, not the pointer
-      // size. This happens to work fir x86-32 and x86-64, however.
+      // size. This happens to work for x86-32 and x86-64, however.
       Expr::Width WordSize = Context::get().getPointerWidth();
       if (WordSize == Expr::Int32) {
         executeMemoryOperation(state, true, arguments[0], 
@@ -1301,7 +1223,7 @@ void Executor::executeCall(ExecutionState &state,
       } else {
         assert(WordSize == Expr::Int64 && "Unknown word size!");
 
-        // X86-64 has quite complicated calling convention. However,
+        // x86-64 has quite complicated calling convention. However,
         // instead of implementing it, we can do a simple hack: just
         // make a function believe that all varargs are on stack.
         executeMemoryOperation(state, true, arguments[0],
@@ -1325,7 +1247,7 @@ void Executor::executeCall(ExecutionState &state,
       // va_end is a noop for the interpreter.
       //
       // FIXME: We should validate that the target didn't do something bad
-      // with vaeend, however (like call it twice).
+      // with va_end, however (like call it twice).
       break;
         
     case Intrinsic::vacopy:
@@ -1489,15 +1411,6 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
   handleLoopAnalysis(dst, src, state);
 }
 
-void Executor::printFileLine(ExecutionState &state, KInstruction *ki,
-                             llvm::raw_ostream &debugFile) {
-  const InstructionInfo &ii = *ki->info;
-  if (ii.file != "")
-    debugFile << "     " << ii.file << ":" << ii.line << ":";
-  else
-    debugFile << "     [no debug info]:";
-}
-
 /// Compute the true target of a function call, resolving LLVM and KLEE aliases
 /// and bitcasts.
 Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
@@ -1509,18 +1422,21 @@ Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 
   while (true) {
     if (GlobalValue *gv = dyn_cast<GlobalValue>(c)) {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 6)
+      if (!Visited.insert(gv).second)
+        return 0;
+#else
       if (!Visited.insert(gv))
         return 0;
-
+#endif
       std::string alias = state.getFnAlias(gv->getName());
       if (alias != "") {
         llvm::Module* currModule = kmodule->module;
         GlobalValue *old_gv = gv;
         gv = currModule->getNamedValue(alias);
         if (!gv) {
-          llvm::errs() << "Function " << alias << "(), alias for " 
-                       << old_gv->getName() << " not found!\n";
-          assert(0 && "function alias not found");
+          klee_error("Function %s(), alias for %s not found!\n", alias.c_str(),
+                     old_gv->getName().str().c_str());
         }
       }
      
@@ -1645,7 +1561,7 @@ void klee::FillCallInfoOutput(Function* f,
     CallArg *arg = &info->args[i];
     if (arg->isPtr && arg->pointee.doTraceValueOut
         && arg->funPtr == NULL) {
-      info->args[i].pointee.outVal =
+      arg->pointee.outVal =
         state.readMemoryChunk(arg->expr,
                               arg->pointee.width,
                               true);
@@ -1688,10 +1604,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       result = eval(ki, 0, state).value;
     }
 
+    // HACK: This assumes the last function in the call path that corresponds is the right one;
+    // this will not work if trace_ret is not always called!
     Function* f = ri->getParent()->getParent();
-    if (!state.callPath.empty() && f == state.callPath.back().f) {
-      CallInfo *info = &state.callPath.back();
-      FillCallInfoOutput(f, isVoidReturn, result, state, *this, info);
+    auto cicand = std::find_if(state.callPath.rbegin(), state.callPath.rend(), [&f](const CallInfo& ci) { return ci.f == f; });
+    if (!state.callPath.empty() && cicand != state.callPath.rend()) {
+      FillCallInfoOutput(f, isVoidReturn, result, state, *this, &(*cicand));
     }
     if (state.stack.size() <= 1) {
       assert(!caller && "caller set on initial stack frame");
@@ -1710,8 +1628,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       }
 
       if (!isVoidReturn) {
-        LLVM_TYPE_Q Type *t = caller->getType();
-        if (t != Type::getVoidTy(getGlobalContext())) {
+        Type *t = caller->getType();
+        if (t != Type::getVoidTy(i->getContext())) {
           // may need to do coercion due to bitcasts
           Expr::Width from = result->getWidth();
           Expr::Width to = getWidthForLLVMType(t);
@@ -1721,13 +1639,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                            CallSite(cast<CallInst>(caller)));
 
             // XXX need to check other param attrs ?
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
       bool isSExt = cs.paramHasAttr(0, llvm::Attribute::SExt);
-#elif LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
-	    bool isSExt = cs.paramHasAttr(0, llvm::Attributes::SExt);
-#else
-	    bool isSExt = cs.paramHasAttr(0, llvm::Attribute::SExt);
-#endif
             if (isSExt) {
               result = SExtExpr::create(result, to);
             } else {
@@ -1748,29 +1660,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     }      
     break;
   }
-#if LLVM_VERSION_CODE < LLVM_VERSION(3, 1)
-  case Instruction::Unwind: {
-    for (;;) {
-      KInstruction *kcaller = state.stack.back().caller;
-      state.popFrame();
-
-      if (statsTracker)
-        statsTracker->framePopped(state);
-
-      if (state.stack.empty()) {
-        terminateStateOnExecError(state, "unwind from initial stack frame");
-        break;
-      } else {
-        Instruction *caller = kcaller->inst;
-        if (InvokeInst *ii = dyn_cast<InvokeInst>(caller)) {
-          transferToBasicBlock(ii->getUnwindDest(), caller->getParent(), state);
-          break;
-        }
-      }
-    }
-    break;
-  }
-#endif
   case Instruction::Br: {
     BranchInst *bi = cast<BranchInst>(i);
     if (bi->isUnconditional()) {
@@ -1807,14 +1696,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
       // Somewhat gross to create these all the time, but fine till we
       // switch to an internal rep.
-      LLVM_TYPE_Q llvm::IntegerType *Ty = 
-        cast<IntegerType>(si->getCondition()->getType());
+      llvm::IntegerType *Ty = cast<IntegerType>(si->getCondition()->getType());
       ConstantInt *ci = ConstantInt::get(Ty, CE->getZExtValue());
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
       unsigned index = si->findCaseValue(ci).getSuccessorIndex();
-#else
-      unsigned index = si->findCaseValue(ci);
-#endif
       transferToBasicBlock(si->getSuccessor(index), si->getParent(), state);
     } else {
       // Handle possible different branch targets
@@ -1830,20 +1714,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       std::map<ref<Expr>, BasicBlock *> expressionOrder;
 
       // Iterate through all non-default cases and order them by expressions
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
       for (SwitchInst::CaseIt i = si->case_begin(), e = si->case_end(); i != e;
            ++i) {
         ref<Expr> value = evalConstant(i.getCaseValue());
-#else
-      for (unsigned i = 1, cases = si->getNumCases(); i < cases; ++i) {
-        ref<Expr> value = evalConstant(si->getCaseValue(i));
-#endif
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
         BasicBlock *caseSuccessor = i.getCaseSuccessor();
-#else
-        BasicBlock *caseSuccessor = si->getSuccessor(i);
-#endif
         expressionOrder.insert(std::make_pair(value, caseSuccessor));
       }
 
@@ -1979,13 +1854,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
             if (from != to) {
               // XXX need to check other param attrs ?
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
               bool isSExt = cs.paramHasAttr(i+1, llvm::Attribute::SExt);
-#elif LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
-	      bool isSExt = cs.paramHasAttr(i+1, llvm::Attributes::SExt);
-#else
-	      bool isSExt = cs.paramHasAttr(i+1, llvm::Attribute::SExt);
-#endif
               if (isSExt) {
                 arguments[i] = SExtExpr::create(arguments[i], to);
               } else {
@@ -2073,6 +1942,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     // Special instructions
   case Instruction::Select: {
+    // NOTE: It is not required that operands 1 and 2 be of scalar type.
     ref<Expr> cond = eval(ki, 0, state).value;
     ref<Expr> tExpr = eval(ki, 1, state).value;
     ref<Expr> fExpr = eval(ki, 2, state).value;
@@ -2131,7 +2001,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     bindLocal(ki, state, result);
     break;
   }
- 
+
   case Instruction::SRem: {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
@@ -2193,7 +2063,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::ICmp: {
     CmpInst *ci = cast<CmpInst>(i);
     ICmpInst *ii = cast<ICmpInst>(ci);
- 
+
     switch(ii->getPredicate()) {
     case ICmpInst::ICMP_EQ: {
       ref<Expr> left = eval(ki, 0, state).value;
@@ -2304,7 +2174,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-    executeMemoryOperation(state, true, base, value, 0);
+    executeMemoryOperation(state, true, base, value, ki);
     break;
   }
 
@@ -2358,7 +2228,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> arg = eval(ki, 0, state).value;
     bindLocal(ki, state, ZExtExpr::create(arg, pType));
     break;
-  } 
+  }
   case Instruction::PtrToInt: {
     CastInst *ci = cast<CastInst>(i);
     Expr::Width iType = getWidthForLLVMType(ci->getType());
@@ -2384,13 +2254,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         !fpWidthToSemantics(right->getWidth()))
       return terminateStateOnExecError(state, "Unsupported FAdd operation");
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(left->getWidth()), left->getAPValue());
     Res.add(APFloat(*fpWidthToSemantics(right->getWidth()),right->getAPValue()), APFloat::rmNearestTiesToEven);
-#else
-    llvm::APFloat Res(left->getAPValue());
-    Res.add(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-#endif
     bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
     break;
   }
@@ -2403,17 +2268,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
       return terminateStateOnExecError(state, "Unsupported FSub operation");
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(left->getWidth()), left->getAPValue());
     Res.subtract(APFloat(*fpWidthToSemantics(right->getWidth()), right->getAPValue()), APFloat::rmNearestTiesToEven);
-#else
-    llvm::APFloat Res(left->getAPValue());
-    Res.subtract(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-#endif
     bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
     break;
   }
- 
+
   case Instruction::FMul: {
     ref<ConstantExpr> left = toConstant(state, eval(ki, 0, state).value,
                                         "floating point");
@@ -2423,13 +2283,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         !fpWidthToSemantics(right->getWidth()))
       return terminateStateOnExecError(state, "Unsupported FMul operation");
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(left->getWidth()), left->getAPValue());
     Res.multiply(APFloat(*fpWidthToSemantics(right->getWidth()), right->getAPValue()), APFloat::rmNearestTiesToEven);
-#else
-    llvm::APFloat Res(left->getAPValue());
-    Res.multiply(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-#endif
     bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
     break;
   }
@@ -2443,13 +2298,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         !fpWidthToSemantics(right->getWidth()))
       return terminateStateOnExecError(state, "Unsupported FDiv operation");
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(left->getWidth()), left->getAPValue());
     Res.divide(APFloat(*fpWidthToSemantics(right->getWidth()), right->getAPValue()), APFloat::rmNearestTiesToEven);
-#else
-    llvm::APFloat Res(left->getAPValue());
-    Res.divide(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-#endif
     bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
     break;
   }
@@ -2462,14 +2312,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (!fpWidthToSemantics(left->getWidth()) ||
         !fpWidthToSemantics(right->getWidth()))
       return terminateStateOnExecError(state, "Unsupported FRem operation");
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(left->getWidth()), left->getAPValue());
     Res.mod(APFloat(*fpWidthToSemantics(right->getWidth()),right->getAPValue()),
             APFloat::rmNearestTiesToEven);
-#else
-    llvm::APFloat Res(left->getAPValue());
-    Res.mod(APFloat(right->getAPValue()), APFloat::rmNearestTiesToEven);
-#endif
     bindLocal(ki, state, ConstantExpr::alloc(Res.bitcastToAPInt()));
     break;
   }
@@ -2482,11 +2327,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (!fpWidthToSemantics(arg->getWidth()) || resultType > arg->getWidth())
       return terminateStateOnExecError(state, "Unsupported FPTrunc operation");
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(arg->getWidth()), arg->getAPValue());
-#else
-    llvm::APFloat Res(arg->getAPValue());
-#endif
     bool losesInfo = false;
     Res.convert(*fpWidthToSemantics(resultType),
                 llvm::APFloat::rmNearestTiesToEven,
@@ -2502,11 +2343,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                         "floating point");
     if (!fpWidthToSemantics(arg->getWidth()) || arg->getWidth() > resultType)
       return terminateStateOnExecError(state, "Unsupported FPExt operation");
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Res(*fpWidthToSemantics(arg->getWidth()), arg->getAPValue());
-#else
-    llvm::APFloat Res(arg->getAPValue());
-#endif
     bool losesInfo = false;
     Res.convert(*fpWidthToSemantics(resultType),
                 llvm::APFloat::rmNearestTiesToEven,
@@ -2523,11 +2360,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (!fpWidthToSemantics(arg->getWidth()) || resultType > 64)
       return terminateStateOnExecError(state, "Unsupported FPToUI operation");
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Arg(*fpWidthToSemantics(arg->getWidth()), arg->getAPValue());
-#else
-    llvm::APFloat Arg(arg->getAPValue());
-#endif
     uint64_t value = 0;
     bool isExact = true;
     Arg.convertToInteger(&value, resultType, false,
@@ -2543,12 +2376,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                        "floating point");
     if (!fpWidthToSemantics(arg->getWidth()) || resultType > 64)
       return terminateStateOnExecError(state, "Unsupported FPToSI operation");
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     llvm::APFloat Arg(*fpWidthToSemantics(arg->getWidth()), arg->getAPValue());
-#else
-    llvm::APFloat Arg(arg->getAPValue());
 
-#endif
     uint64_t value = 0;
     bool isExact = true;
     Arg.convertToInteger(&value, resultType, true,
@@ -2599,13 +2428,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         !fpWidthToSemantics(right->getWidth()))
       return terminateStateOnExecError(state, "Unsupported FCmp operation");
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
     APFloat LHS(*fpWidthToSemantics(left->getWidth()),left->getAPValue());
     APFloat RHS(*fpWidthToSemantics(right->getWidth()),right->getAPValue());
-#else
-    APFloat LHS(left->getAPValue());
-    APFloat RHS(right->getAPValue());
-#endif
     APFloat::cmpResult CmpRes = LHS.compare(RHS);
 
     bool Result = false;
@@ -2723,22 +2547,92 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     bindLocal(ki, state, result);
     break;
   }
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
   case Instruction::Fence: {
     // Ignore for now
     break;
   }
-#endif
+  case Instruction::InsertElement: {
+    InsertElementInst *iei = cast<InsertElementInst>(i);
+    ref<Expr> vec = eval(ki, 0, state).value;
+    ref<Expr> newElt = eval(ki, 1, state).value;
+    ref<Expr> idx = eval(ki, 2, state).value;
 
+    ConstantExpr *cIdx = dyn_cast<ConstantExpr>(idx);
+    if (cIdx == NULL) {
+      terminateStateOnError(
+          state, "InsertElement, support for symbolic index not implemented",
+          Unhandled);
+      return;
+    }
+    uint64_t iIdx = cIdx->getZExtValue();
+    const llvm::VectorType *vt = iei->getType();
+    unsigned EltBits = getWidthForLLVMType(vt->getElementType());
+
+    if (iIdx >= vt->getNumElements()) {
+      // Out of bounds write
+      terminateStateOnError(state, "Out of bounds write when inserting element",
+                            BadVectorAccess);
+      return;
+    }
+
+    const unsigned elementCount = vt->getNumElements();
+    llvm::SmallVector<ref<Expr>, 8> elems;
+    elems.reserve(elementCount);
+    for (unsigned i = 0; i < elementCount; ++i) {
+      // evalConstant() will use ConcatExpr to build vectors with the
+      // zero-th element leftmost (most significant bits), followed
+      // by the next element (second leftmost) and so on. This means
+      // that we have to adjust the index so we read left to right
+      // rather than right to left.
+      unsigned bitOffset = EltBits * (elementCount - i - 1);
+      elems.push_back(i == iIdx ? newElt
+                                : ExtractExpr::create(vec, bitOffset, EltBits));
+    }
+
+    ref<Expr> Result = ConcatExpr::createN(elementCount, elems.data());
+    bindLocal(ki, state, Result);
+    break;
+  }
+  case Instruction::ExtractElement: {
+    ExtractElementInst *eei = cast<ExtractElementInst>(i);
+    ref<Expr> vec = eval(ki, 0, state).value;
+    ref<Expr> idx = eval(ki, 1, state).value;
+
+    ConstantExpr *cIdx = dyn_cast<ConstantExpr>(idx);
+    if (cIdx == NULL) {
+      terminateStateOnError(
+          state, "ExtractElement, support for symbolic index not implemented",
+          Unhandled);
+      return;
+    }
+    uint64_t iIdx = cIdx->getZExtValue();
+    const llvm::VectorType *vt = eei->getVectorOperandType();
+    unsigned EltBits = getWidthForLLVMType(vt->getElementType());
+
+    if (iIdx >= vt->getNumElements()) {
+      // Out of bounds read
+      terminateStateOnError(state, "Out of bounds read when extracting element",
+                            BadVectorAccess);
+      return;
+    }
+
+    // evalConstant() will use ConcatExpr to build vectors with the
+    // zero-th element left most (most significant bits), followed
+    // by the next element (second left most) and so on. This means
+    // that we have to adjust the index so we read left to right
+    // rather than right to left.
+    unsigned bitOffset = EltBits*(vt->getNumElements() - iIdx -1);
+    ref<Expr> Result = ExtractExpr::create(vec, bitOffset, EltBits);
+    bindLocal(ki, state, Result);
+    break;
+  }
+  case Instruction::ShuffleVector:
+    // Should never happen due to Scalarizer pass removing ShuffleVector
+    // instructions.
+    terminateStateOnExecError(state, "Unexpected ShuffleVector instruction");
+    break;
   // Other instructions...
   // Unhandled
-  case Instruction::ExtractElement:
-  case Instruction::InsertElement:
-  case Instruction::ShuffleVector:
-    terminateStateOnError(state, "XXX vector instructions unhandled",
-                          Unhandled);
-    break;
- 
   default:
     terminateStateOnExecError(state, "illegal instruction");
     break;
@@ -2748,6 +2642,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 void Executor::updateStates(ExecutionState *current) {
   if (searcher) {
     searcher->update(current, addedStates, removedStates);
+    searcher->update(nullptr, continuedStates, pausedStates);
+    pausedStates.clear();
+    continuedStates.clear();
   }
   
   states.insert(addedStates.begin(), addedStates.end());
@@ -2776,7 +2673,7 @@ void Executor::computeOffsets(KGEPInstruction *kgepi, TypeIt ib, TypeIt ie) {
     ConstantExpr::alloc(0, Context::get().getPointerWidth());
   uint64_t index = 1;
   for (TypeIt ii = ib; ii != ie; ++ii) {
-    if (LLVM_TYPE_Q StructType *st = dyn_cast<StructType>(*ii)) {
+    if (StructType *st = dyn_cast<StructType>(*ii)) {
       const StructLayout *sl = kmodule->targetData->getStructLayout(st);
       const ConstantInt *ci = cast<ConstantInt>(ii.getOperand());
       uint64_t addend = sl->getElementOffset((unsigned) ci->getZExtValue());
@@ -3033,6 +2930,30 @@ std::string Executor::getAddressInfo(ExecutionState &state,
   return info.str();
 }
 
+void Executor::pauseState(ExecutionState &state){
+  auto it = std::find(continuedStates.begin(), continuedStates.end(), &state);
+  // If the state was to be continued, but now gets paused again
+  if (it != continuedStates.end()){
+    // ...just don't continue it
+    std::swap(*it, continuedStates.back());
+    continuedStates.pop_back();
+  } else {
+    pausedStates.push_back(&state);
+  }
+}
+
+void Executor::continueState(ExecutionState &state){
+  auto it = std::find(pausedStates.begin(), pausedStates.end(), &state);
+  // If the state was to be paused, but now gets continued again
+  if (it != pausedStates.end()){
+    // ...don't pause it
+    std::swap(*it, pausedStates.back());
+    pausedStates.pop_back();
+  } else {
+    continuedStates.push_back(&state);
+  }
+}
+
 void Executor::terminateState(ExecutionState &state) {
   if (replayKTest && replayPosition!=replayKTest->numObjects) {
     klee_warning_once(replayKTest,
@@ -3192,10 +3113,7 @@ void Executor::terminateStateOnError(ExecutionState &state,
 }
 
 // XXX shoot me
-static const char *okExternalsList[] = { "printf", 
-                                         "fprintf", 
-                                         "puts",
-                                         "getpid" };
+static const char *okExternalsList[] = { /* Nothing! */ };
 static std::set<std::string> okExternals(okExternalsList,
                                          okExternalsList + 
                                          (sizeof(okExternalsList)/sizeof(okExternalsList[0])));
@@ -3209,8 +3127,8 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
   
   if (NoExternals && !okExternals.count(function->getName())) {
-    llvm::errs() << "KLEE:ERROR: Calling not-OK external function : "
-                 << function->getName().str() << "\n";
+    klee_warning("Disallowed call to external function: %s\n",
+               function->getName().str().c_str());
     terminateStateOnError(state, "externals disallowed", User);
     return;
   }
@@ -3258,14 +3176,14 @@ void Executor::callExternalFunction(ExecutionState &state,
       if (i != arguments.size()-1)
 	os << ", ";
     }
-    os << ")";
+    os << ") at ";
+    state.pc->printFileLine(os);
     
     if (AllExternalWarnings)
       klee_warning("%s", os.str().c_str());
     else
       klee_warning_once(function, "%s", os.str().c_str());
   }
-  
   bool success = externalDispatcher->executeCall(function, target->inst, args);
   if (!success) {
     terminateStateOnError(state, "failed external call: " + function->getName(),
@@ -3279,8 +3197,8 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
   }
 
-  LLVM_TYPE_Q Type *resultType = target->inst->getType();
-  if (resultType != Type::getVoidTy(getGlobalContext())) {
+  Type *resultType = target->inst->getType();
+  if (resultType != Type::getVoidTy(function->getContext())) {
     ref<Expr> e = ConstantExpr::fromMemory((void*) args, 
                                            getWidthForLLVMType(resultType));
     bindLocal(target, state, e);
@@ -3341,8 +3259,11 @@ void Executor::executeAlloc(ExecutionState &state,
                             const ObjectState *reallocFrom) {
   size = toUnique(state, size);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(size)) {
-    MemoryObject *mo = memory->allocate(CE->getZExtValue(), isLocal, false, 
-                                        state.prevPC->inst);
+    const llvm::Value *allocSite = state.prevPC->inst;
+    size_t allocationAlignment = getAllocationAlignment(allocSite);
+    MemoryObject *mo =
+        memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
+                         allocSite, allocationAlignment);
     if (!mo) {
       bindLocal(target, state, 
                 ConstantExpr::alloc(0, Context::get().getPointerWidth()));
@@ -3414,7 +3335,7 @@ void Executor::executeAlloc(ExecutionState &state,
         // malloc will fail for it, so lets fork and return 0.
         StatePair hugeSize = 
           fork(*fixedSize.second, 
-               UltExpr::create(ConstantExpr::alloc(1<<31, W), size), 
+               UltExpr::create(ConstantExpr::alloc(1U<<31, W), size),
                true);
         if (hugeSize.first) {
           klee_message("NOTE: found huge malloc, returning 0");
@@ -3504,7 +3425,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
-                                      KInstruction *target /* undef if write */) {
+                                      KInstruction *target) {
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -3520,7 +3441,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (!isa<ConstantExpr>(address)) {
       printf("\n");
       printf("Some symbolic indexing going on here:\n");
-      printFileLine(state, (KInstruction*)state.pc, llvm::errs());
+      state.pc->printFileLine(llvm::errs());
       state.dumpStack(llvm::errs());
     }
   }
@@ -3556,6 +3477,47 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       return;
     }
 
+    // check if the operation is intercepted
+    if (isWrite) {
+      std::string interceptWriter = state.getInterceptWriter(mo->address);
+      if (interceptWriter != "") {
+        GlobalValue *gv = kmodule->module->getNamedValue(interceptWriter);
+        if (!gv) {
+          klee_error("Function %s(), interceptor, not found!\n", interceptWriter.c_str());
+        }
+        Function* interceptFunc;
+        if (!(interceptFunc = dyn_cast<Function>(gv))) {
+          klee_error("Interceptor is not a function\n");
+        }
+        std::vector<ref<Expr>> interceptArgs;
+        interceptArgs.push_back(/* address */ ConstantExpr::alloc(mo->address, 64));
+        interceptArgs.push_back(/* offset */ ZExtExpr::create(offset, 32));
+        interceptArgs.push_back(/* size */ ConstantExpr::alloc(bytes, 32));
+        interceptArgs.push_back(/* value */ ZExtExpr::create(value, 64));
+        executeCall(state, target, interceptFunc, interceptArgs);
+        return;
+      }
+    } else {
+      std::string interceptReader = state.getInterceptReader(mo->address);
+      if (interceptReader != "") {
+        GlobalValue *gv = kmodule->module->getNamedValue(interceptReader);
+        if (!gv) {
+          klee_error("Function %s(), interceptor, not found!\n", interceptReader.c_str());
+        }
+        Function* interceptFunc;
+        if (!(interceptFunc = dyn_cast<Function>(gv))) {
+          klee_error("Interceptor is not a function\n");
+        }
+        std::vector<ref<Expr>> interceptArgs;
+        interceptArgs.push_back(/* address */ ConstantExpr::alloc(mo->address, 64));
+        interceptArgs.push_back(/* offset */ ZExtExpr::create(offset, 32));
+        interceptArgs.push_back(/* size */ ConstantExpr::alloc(bytes, 32));
+        executeCall(state, target, interceptFunc, interceptArgs);
+        return;
+      }
+    }
+
+
     if (inBounds) {
       const ObjectState *os = op.second;
       if (os->isAccessible()) {
@@ -3563,7 +3525,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           if (os->readOnly) {
             terminateStateOnError(state,
                                   "memory error: object read only",
-                                  ReadOnly);
+                                  User);
           } else {
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
@@ -3615,7 +3577,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           if (os->readOnly) {
             terminateStateOnError(*bound,
                                   "memory error: object read only",
-                                  ReadOnly);
+                                  User);
           } else {
             ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
             wos->write(mo->getOffsetExpr(address), value);
@@ -3624,6 +3586,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
           bindLocal(target, *bound, result);
         }
+      } else {
+        std::stringstream msg;
+        msg << "memory error: object inaccessible. ";
+        msg << "It is rendered inaccessible because: ";
+        msg << os->inaccessible_message;
+        terminateStateOnError(state, msg.str(), Inaccessible);
       }
     } else {
       std::stringstream msg;
@@ -3752,10 +3720,12 @@ void Executor::runFunctionAsMain(Function *f,
   Function::arg_iterator ai = f->arg_begin(), ae = f->arg_end();
   if (ai!=ae) {
     arguments.push_back(ConstantExpr::alloc(argc, Expr::Int32));
-
     if (++ai!=ae) {
-      argvMO = memory->allocate((argc+1+envc+1+1) * NumPtrBytes, false, true,
-                                f->begin()->begin());
+      Instruction *first = &*(f->begin()->begin());
+      argvMO =
+          memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
+                           /*isLocal=*/false, /*isGlobal=*/true,
+                           /*allocSite=*/first, /*alignment=*/8);
 
       if (!argvMO)
         klee_error("Could not allocate memory for function arguments");
@@ -3797,8 +3767,10 @@ void Executor::runFunctionAsMain(Function *f,
       } else {
         char *s = i<argc ? argv[i] : envp[i-(argc+1)];
         int j, len = strlen(s);
-        
-        MemoryObject *arg = memory->allocate(len+1, false, true, state->pc->inst);
+
+        MemoryObject *arg =
+            memory->allocate(len + 1, /*isLocal=*/false, /*isGlobal=*/true,
+                             /*allocSite=*/state->pc->inst, /*alignment=*/8);
         if (!arg)
           klee_error("Could not allocate memory for function arguments");
         ObjectState *os = bindObjectInState(*state, arg, false);
@@ -3843,8 +3815,6 @@ unsigned Executor::getSymbolicPathStreamID(const ExecutionState &state) {
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,
                                 Interpreter::LogType logFormat) {
-
-  std::ostringstream info;
 
   switch (logFormat) {
   case STP: {
@@ -3972,13 +3942,86 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
   }
 }
 
-Expr::Width Executor::getWidthForLLVMType(LLVM_TYPE_Q llvm::Type *type) const {
+Expr::Width Executor::getWidthForLLVMType(llvm::Type *type) const {
   return kmodule->targetData->getTypeSizeInBits(type);
 }
 
+size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
+  // FIXME: 8 was the previous default. We shouldn't hard code this
+  // and should fetch the default from elsewhere.
+  const size_t forcedAlignment = 8;
+  size_t alignment = 0;
+  llvm::Type *type = NULL;
+  std::string allocationSiteName(allocSite->getName().str());
+  if (const GlobalValue *GV = dyn_cast<GlobalValue>(allocSite)) {
+    alignment = GV->getAlignment();
+    if (const GlobalVariable *globalVar = dyn_cast<GlobalVariable>(GV)) {
+      // All GlobalVariables's have pointer type
+      llvm::PointerType *ptrType =
+          dyn_cast<llvm::PointerType>(globalVar->getType());
+      assert(ptrType && "globalVar's type is not a pointer");
+      type = ptrType->getElementType();
+    } else {
+      type = GV->getType();
+    }
+  } else if (const AllocaInst *AI = dyn_cast<AllocaInst>(allocSite)) {
+    alignment = AI->getAlignment();
+    type = AI->getAllocatedType();
+  } else if (isa<InvokeInst>(allocSite) || isa<CallInst>(allocSite)) {
+    // FIXME: Model the semantics of the call to use the right alignment
+    llvm::Value *allocSiteNonConst = const_cast<llvm::Value *>(allocSite);
+    const CallSite cs = (isa<InvokeInst>(allocSiteNonConst)
+                             ? CallSite(cast<InvokeInst>(allocSiteNonConst))
+                             : CallSite(cast<CallInst>(allocSiteNonConst)));
+    llvm::Function *fn =
+        klee::getDirectCallTarget(cs, /*moduleIsFullyLinked=*/true);
+    if (fn)
+      allocationSiteName = fn->getName().str();
+
+    klee_warning_once(fn != NULL ? fn : allocSite,
+                      "Alignment of memory from call \"%s\" is not "
+                      "modelled. Using alignment of %zu.",
+                      allocationSiteName.c_str(), forcedAlignment);
+    alignment = forcedAlignment;
+  } else {
+    llvm_unreachable("Unhandled allocation site");
+  }
+
+  if (alignment == 0) {
+    assert(type != NULL);
+    // No specified alignment. Get the alignment for the type.
+    if (type->isSized()) {
+      alignment = kmodule->targetData->getPrefTypeAlignment(type);
+    } else {
+      klee_warning_once(allocSite, "Cannot determine memory alignment for "
+                                   "\"%s\". Using alignment of %zu.",
+                        allocationSiteName.c_str(), forcedAlignment);
+      alignment = forcedAlignment;
+    }
+  }
+
+  // Currently we require alignment be a power of 2
+  if (!bits64::isPowerOfTwo(alignment)) {
+    klee_warning_once(allocSite, "Alignment of %zu requested for %s but this "
+                                 "not supported. Using alignment of %zu",
+                      alignment, allocSite->getName().str().c_str(),
+                      forcedAlignment);
+    alignment = forcedAlignment;
+  }
+  assert(bits64::isPowerOfTwo(alignment) &&
+         "Returned alignment must be a power of two");
+  return alignment;
+}
+
+void Executor::prepareForEarlyExit() {
+  if (statsTracker) {
+    // Make sure stats get flushed out
+    statsTracker->done();
+  }
+}
 ///
 
-Interpreter *Interpreter::create(const InterpreterOptions &opts,
+Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opts,
                                  InterpreterHandler *ih) {
-  return new Executor(opts, ih);
+  return new Executor(ctx, opts, ih);
 }

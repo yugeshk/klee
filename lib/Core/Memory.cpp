@@ -19,15 +19,9 @@
 #include "ObjectHolder.h"
 #include "MemoryManager.h"
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Value.h>
-#else
-#include <llvm/Function.h>
-#include <llvm/Instruction.h>
-#include <llvm/Value.h>
-#endif
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Value.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -276,7 +270,7 @@ void ObjectState::forgetAll() {
   //              << object->fake_object
   //              << object->isUserSpecified << "]:";
   const Array *array =
-    getArrayCache()->CreateArray("reset_arr" + llvm::utostr(++id),
+    getArrayCache()->CreateArray("reset_" + object->name + "_" + llvm::utostr(++id),
                                  size);
   UpdateList ul(array, 0);
   for (unsigned i=0; i<size; i++) {
@@ -302,7 +296,7 @@ void ObjectState::forgetThese(const BitArray *bytesToForget) {
   //assert(size != 0); //TODO: why size can ever be 0?
   if (size == 0) return;
   const Array *array =
-    getArrayCache()->CreateArray("reset_arr" + llvm::utostr(++id),
+    getArrayCache()->CreateArray("reset_" + object->name + "_" + llvm::utostr(++id),
                                  size);
   UpdateList ul(array, 0);
   for (unsigned i=0; i<size; i++) {

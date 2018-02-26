@@ -13,6 +13,7 @@
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
 #include "klee/Internal/ADT/TreeStream.h"
+#include "klee/MergeHandler.h"
 #include "klee/Internal/ADT/ImmutableSet.h"
 #include "klee/util/GetExprSymbols.h"
 #include "klee/LoopAnalysis.h"
@@ -25,6 +26,7 @@
 #include <llvm/Analysis/LoopInfo.h>
 
 #include <map>
+#include <regex>
 #include <set>
 #include <vector>
 
@@ -63,7 +65,7 @@ struct StackFrame {
 
   // For vararg functions: arguments not passed via parameter are
   // stored (packed tightly) in a local (alloca) memory object. This
-  // is setup to match the way the front-end generates vaarg code (it
+  // is set up to match the way the front-end generates vaarg code (it
   // does not pass vaarg through as expected). VACopy is lowered inside
   // of intrinsic lowering.
   MemoryObject *varargs;
@@ -71,6 +73,13 @@ struct StackFrame {
   StackFrame(KInstIterator caller, KFunction *kf);
   StackFrame(const StackFrame &s);
   ~StackFrame();
+};
+
+struct FunctionAlias {
+  bool isRegex;
+  std::regex nameRegex;
+  std::string name;
+  std::string alias;
 };
 
 struct FieldDescr {
@@ -187,7 +196,9 @@ private:
   // unsupported, use copy constructor
   ExecutionState &operator=(const ExecutionState &);
 
-  std::map<std::string, std::string> fnAliases;
+  std::vector<FunctionAlias> fnAliases;
+  std::map<uint64_t, std::string> readsIntercepts;
+  std::map<uint64_t, std::string> writesIntercepts;
 
 public:
   // Execution - Control Flow specific
@@ -283,7 +294,16 @@ public:
 
   std::string getFnAlias(std::string fn);
   void addFnAlias(std::string old_fn, std::string new_fn);
+  void addFnRegexAlias(std::string fn_regex, std::string new_fn);
   void removeFnAlias(std::string fn);
+
+  std::string getInterceptReader(uint64_t addr);
+  std::string getInterceptWriter(uint64_t addr);
+  void addReadsIntercept(uint64_t addr, std::string reader);
+  void addWritesIntercept(uint64_t addr, std::string writer);
+
+  // The objects handling the klee_open_merge calls this state ran through
+  std::vector<ref<MergeHandler> > openMergeStack;
 
 private:
   ExecutionState() : ptreeNode(0) {}
@@ -337,27 +357,28 @@ public:
                         bool doTraceValueIn,
                         bool doTraceValueOut);
   void traceArgPtrNestedField(ref<Expr> arg, int base_offset, int offset,
-                              Expr::Width width, std::string name);
+                              Expr::Width width, std::string name,
+                              bool trace_in, bool trace_out);
   void traceExtraPtr(size_t ptr, Expr::Width width,
                      std::string name,
                      std::string type,
-                     bool tracePointee);
+                     bool trace_in, bool trace_out);
   void traceExtraPtrField(size_t ptr, int offset,
                           Expr::Width width, std::string name,
-                          bool doTraceValue);
+                          bool trace_in, bool trace_out);
   void traceExtraPtrNestedField(size_t ptr,
                                 int base_offset,
                                 int offset,
                                 Expr::Width width,
                                 std::string name,
-                                bool doTraceValue);
+                                bool trace_in, bool trace_out);
   void traceExtraPtrNestedNestedField(size_t ptr,
                                       int base_base_offset,
                                       int base_offset,
                                       int offset,
                                       Expr::Width width,
-                                                      std::string name,
-                                      bool doTraceValue);
+                                      std::string name,
+                                      bool trace_in, bool trace_out);
   void traceRetPtrField(int offset, Expr::Width width, std::string name,
                         bool doTraceValue);
   void traceRetPtrNestedField(int base_offset, int offset,

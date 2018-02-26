@@ -27,7 +27,6 @@
 #include "MemoryManager.h"
 #include "UserSearcher.h"
 
-#if LLVM_VERSION_CODE > LLVM_VERSION(3, 2)
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -35,15 +34,6 @@
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
-#else
-#include "llvm/BasicBlock.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
-#endif
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Path.h"
@@ -165,9 +155,10 @@ static bool instructionIsCoverable(Instruction *i) {
     if (it==bb->begin()) {
       return true;
     } else {
-      Instruction *prev = --it;
+      Instruction *prev = &*(--it);
       if (isa<CallInst>(prev) || isa<InvokeInst>(prev)) {
-        Function *target = getDirectCallTarget(prev);
+        Function *target =
+            getDirectCallTarget(CallSite(prev), /*moduleIsFullyLinked=*/true);
         if (target && target->doesNotReturn())
           return false;
       }
@@ -205,13 +196,16 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
   if (!sys::path::is_absolute(objectFilename)) {
     SmallString<128> current(objectFilename);
     if(sys::fs::make_absolute(current)) {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 6)
+      Twine current_twine(current.str()); // requires a twine for this
+      if (!sys::fs::exists(current_twine)) {
+#elif LLVM_VERSION_CODE >= LLVM_VERSION(3, 5)
       bool exists = false;
-
-#if LLVM_VERSION_CODE < LLVM_VERSION(3, 5)
+      if (!sys::fs::exists(current.str(), exists)) {
+#else
+      bool exists = false;
       error_code ec = sys::fs::exists(current.str(), exists);
       if (ec == errc::success && exists) {
-#else
-      if (!sys::fs::exists(current.str(), exists)) {
 #endif
         objectFilename = current.c_str();
       }
@@ -270,10 +264,8 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
 }
 
 StatsTracker::~StatsTracker() {  
-  if (statsFile)
-    delete statsFile;
-  if (istatsFile)
-    delete istatsFile;
+  delete statsFile;
+  delete istatsFile;
 }
 
 void StatsTracker::done() {
@@ -538,7 +530,8 @@ void StatsTracker::writeIStats() {
       // Always try to write the filename before the function name, as otherwise
       // KCachegrind can create two entries for the function, one with an
       // unnamed file and one without.
-      const InstructionInfo &ii = executor.kmodule->infos->getFunctionInfo(fnIt);
+      Function *fn = &*fnIt;
+      const InstructionInfo &ii = executor.kmodule->infos->getFunctionInfo(fn);
       if (ii.file != sourceFile) {
         of << "fl=" << ii.file << "\n";
         sourceFile = ii.file;
@@ -634,9 +627,9 @@ static std::vector<Instruction*> getSuccs(Instruction *i) {
 
   if (i==bb->getTerminator()) {
     for (succ_iterator it = succ_begin(bb), ie = succ_end(bb); it != ie; ++it)
-      res.push_back(it->begin());
+      res.push_back(&*(it->begin()));
   } else {
-    res.push_back(++BasicBlock::iterator(i));
+    res.push_back(&*(++BasicBlock::iterator(i)));
   }
 
   return res;
@@ -683,17 +676,19 @@ void StatsTracker::computeReachableUncovered() {
            bbIt != bb_ie; ++bbIt) {
         for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
              it != ie; ++it) {
-          if (isa<CallInst>(it) || isa<InvokeInst>(it)) {
-            CallSite cs(it);
+          Instruction *inst = &*it;
+          if (isa<CallInst>(inst) || isa<InvokeInst>(inst)) {
+            CallSite cs(inst);
             if (isa<InlineAsm>(cs.getCalledValue())) {
               // We can never call through here so assume no targets
               // (which should be correct anyhow).
-              callTargets.insert(std::make_pair(it,
+              callTargets.insert(std::make_pair(inst,
                                                 std::vector<Function*>()));
-            } else if (Function *target = getDirectCallTarget(cs)) {
-              callTargets[it].push_back(target);
+            } else if (Function *target = getDirectCallTarget(
+                           cs, /*moduleIsFullyLinked=*/true)) {
+              callTargets[inst].push_back(target);
             } else {
-              callTargets[it] = 
+              callTargets[inst] =
                 std::vector<Function*>(km->escapingFunctions.begin(),
                                        km->escapingFunctions.end());
             }
@@ -714,14 +709,15 @@ void StatsTracker::computeReachableUncovered() {
     std::vector<Instruction *> instructions;
     for (Module::iterator fnIt = m->begin(), fn_ie = m->end(); 
          fnIt != fn_ie; ++fnIt) {
+      Function *fn = &*fnIt;
       if (fnIt->isDeclaration()) {
         if (fnIt->doesNotReturn()) {
-          functionShortestPath[fnIt] = 0;
+          functionShortestPath[fn] = 0;
         } else {
-          functionShortestPath[fnIt] = 1; // whatever
+          functionShortestPath[fn] = 1; // whatever
         }
       } else {
-        functionShortestPath[fnIt] = 0;
+        functionShortestPath[fn] = 0;
       }
 
       // Not sure if I should bother to preorder here. XXX I should.
@@ -729,14 +725,12 @@ void StatsTracker::computeReachableUncovered() {
            bbIt != bb_ie; ++bbIt) {
         for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
              it != ie; ++it) {
-          instructions.push_back(it);
-          unsigned id = infos.getInfo(it).id;
+          Instruction *inst = &*it;
+          instructions.push_back(inst);
+          unsigned id = infos.getInfo(inst).id;
           sm.setIndexedValue(stats::minDistToReturn, 
                              id, 
-                             isa<ReturnInst>(it)
-#if LLVM_VERSION_CODE < LLVM_VERSION(3, 1)
-                             || isa<UnwindInst>(it)
-#endif
+                             isa<ReturnInst>(inst)
                              );
         }
       }
@@ -787,14 +781,13 @@ void StatsTracker::computeReachableUncovered() {
           // functionShortestPath, or it will remain 0 (erroneously indicating
           // that no return instructions are reachable)
           Function *f = inst->getParent()->getParent();
-          if (best != cur
-              || (inst == f->begin()->begin()
+          if (best != cur || (inst == &*(f->begin()->begin())
                   && functionShortestPath[f] != best)) {
             sm.setIndexedValue(stats::minDistToReturn, id, best);
             changed = true;
 
             // Update shortest path if this is the entry point.
-            if (inst==f->begin()->begin())
+            if (inst == &*(f->begin()->begin()))
               functionShortestPath[f] = best;
           }
         }
@@ -811,8 +804,9 @@ void StatsTracker::computeReachableUncovered() {
          bbIt != bb_ie; ++bbIt) {
       for (BasicBlock::iterator it = bbIt->begin(), ie = bbIt->end(); 
            it != ie; ++it) {
-        unsigned id = infos.getInfo(it).id;
-        instructions.push_back(&*it);
+        Instruction *inst = &*it;
+        unsigned id = infos.getInfo(inst).id;
+        instructions.push_back(inst);
         sm.setIndexedValue(stats::minDistToUncovered, 
                            id, 
                            sm.getIndexedValue(stats::uncoveredInstructions, id));

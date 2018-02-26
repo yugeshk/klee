@@ -10,9 +10,7 @@
 #include "klee/Expr.h"
 #include "klee/Config/Version.h"
 
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
 #include "llvm/ADT/Hashing.h"
-#endif
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 // FIXME: We shouldn't need this once fast constant support moves into
@@ -81,6 +79,13 @@ ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
                                ReadExpr::create(ul, 
                                                 ConstantExpr::alloc(0,Expr::Int32)));
   }
+}
+
+int Expr::compare(const Expr &b) const {
+  static ExprEquivSet equivs;
+  int r = compare(b, equivs);
+  equivs.clear();
+  return r;
 }
 
 // returns 0 if b is structurally equal to *this
@@ -177,11 +182,7 @@ unsigned Expr::computeHash() {
 }
 
 unsigned ConstantExpr::computeHash() {
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 1)
   hashValue = hash_value(value) ^ (getWidth() * MAGIC_HASH_CONSTANT);
-#else
-  hashValue = value.getHashValue() ^ (getWidth() * MAGIC_HASH_CONSTANT);
-#endif
   return hashValue;
 }
 
@@ -522,6 +523,7 @@ ref<Expr> ReadExpr::create(const UpdateList &ul, ref<Expr> index) {
   // a smart UpdateList so it is not worth rescanning.
 
   const UpdateNode *un = ul.head;
+  bool updateListHasSymbolicWrites = false;
   for (; un; un=un->next) {
     ref<Expr> cond = EqExpr::create(index, un->index);
     
@@ -529,7 +531,19 @@ ref<Expr> ReadExpr::create(const UpdateList &ul, ref<Expr> index) {
       if (CE->isTrue())
         return un->value;
     } else {
+      updateListHasSymbolicWrites = true;
       break;
+    }
+  }
+
+  if (ul.root->isConstantArray() && !updateListHasSymbolicWrites) {
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(index)) {
+      assert(CE->getWidth() <= 64 && "Index too large");
+      uint64_t concreteIndex = CE->getZExtValue();
+      uint64_t size = ul.root->size;
+      if (concreteIndex < size) {
+        return ul.root->constantValues[concreteIndex];
+      }
     }
   }
 

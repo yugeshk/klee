@@ -12,28 +12,33 @@
  */
 #include "klee/Common.h"
 #include "klee/CommandLine.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace klee {
-Solver *constructSolverChain(Solver *coreSolver, std::string querySMT2LogPath,
+Solver *constructSolverChain(Solver *coreSolver,
+                             std::string querySMT2LogPath,
                              std::string baseSolverQuerySMT2LogPath,
-                             std::string queryPCLogPath,
-                             std::string baseSolverQueryPCLogPath) {
+                             std::string queryKQueryLogPath,
+                             std::string baseSolverQueryKQueryLogPath) {
   Solver *solver = coreSolver;
 
-  if (optionIsSet(queryLoggingOptions, SOLVER_PC)) {
-    solver = createPCLoggingSolver(solver, baseSolverQueryPCLogPath,
+  if (queryLoggingOptions.isSet(SOLVER_KQUERY)) {
+    solver = createKQueryLoggingSolver(solver, baseSolverQueryKQueryLogPath,
                                    MinQueryTimeToLog);
-    llvm::errs() << "Logging queries that reach solver in .pc format to "
-                 << baseSolverQueryPCLogPath.c_str() << "\n";
+    klee_message("Logging queries that reach solver in .kquery format to %s\n",
+                 baseSolverQueryKQueryLogPath.c_str());
   }
 
-  if (optionIsSet(queryLoggingOptions, SOLVER_SMTLIB)) {
+  if (queryLoggingOptions.isSet(SOLVER_SMTLIB)) {
     solver = createSMTLIBLoggingSolver(solver, baseSolverQuerySMT2LogPath,
                                        MinQueryTimeToLog);
-    llvm::errs() << "Logging queries that reach solver in .smt2 format to "
-                 << baseSolverQuerySMT2LogPath.c_str() << "\n";
+    klee_message("Logging queries that reach solver in .smt2 format to %s\n",
+                 baseSolverQuerySMT2LogPath.c_str());
   }
+
+  if (UseAssignmentValidatingSolver)
+    solver = createAssignmentValidatingSolver(solver);
 
   if (UseFastCexSolver)
     solver = createFastCexSolver(solver);
@@ -50,17 +55,18 @@ Solver *constructSolverChain(Solver *coreSolver, std::string querySMT2LogPath,
   if (DebugValidateSolver)
     solver = createValidatingSolver(solver, coreSolver);
 
-  if (optionIsSet(queryLoggingOptions, ALL_PC)) {
-    solver = createPCLoggingSolver(solver, queryPCLogPath, MinQueryTimeToLog);
-    llvm::errs() << "Logging all queries in .pc format to "
-                 << queryPCLogPath.c_str() << "\n";
+  if (queryLoggingOptions.isSet(ALL_KQUERY)) {
+    solver = createKQueryLoggingSolver(solver, queryKQueryLogPath,
+                                       MinQueryTimeToLog);
+    klee_message("Logging all queries in .kquery format to %s\n",
+                 queryKQueryLogPath.c_str());
   }
 
-  if (optionIsSet(queryLoggingOptions, ALL_SMTLIB)) {
+  if (queryLoggingOptions.isSet(ALL_SMTLIB)) {
     solver =
         createSMTLIBLoggingSolver(solver, querySMT2LogPath, MinQueryTimeToLog);
-    llvm::errs() << "Logging all queries in .smt2 format to "
-                 << querySMT2LogPath.c_str() << "\n";
+    klee_message("Logging all queries in .smt2 format to %s\n",
+                 querySMT2LogPath.c_str());
   }
   if (DebugCrossCheckCoreSolverWith != NO_SOLVER) {
     Solver *oracleSolver = createCoreSolver(DebugCrossCheckCoreSolverWith);

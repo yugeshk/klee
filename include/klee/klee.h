@@ -11,13 +11,34 @@
 #define __KLEE_H__
 
 #include <assert.h>
-#include "stdint.h"
+#include "inttypes.h"
 #include "stddef.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-  
+  // Types of the reader/writer for intercepts
+  /* size is in bytes; value must be zero-extended if size < 8 */
+  typedef uint64_t (*klee_reader)(uint64_t addr, unsigned offset, unsigned size);
+  /* size is in bytes; value may be zero-padded if size < 8 */
+  typedef void (*klee_writer)(uint64_t addr, unsigned offset, unsigned size, uint64_t value);
+
+  /*
+   * Intercepts reads to the specified block of memory,
+   * redirecting them to the specified reader.
+   * This can be used for fine-grained access control, or to execute code
+   * on each read (such as when modeling hardware).
+   */
+  void klee_intercept_reads(void* addr, const char* reader_name);
+
+  /*
+   * Intercepts writes to the specified block of memory,
+   * redirecting them to the specified writer.
+   * This can be used for fine-grained access control, or to execute code
+   * on each write (such as when modeling hardware).
+   */
+  void klee_intercept_writes(void* addr, const char* writer_name);
+
   /* Add an accesible memory object at a user specified location. It
    * is the users responsibility to make sure that these memory
    * objects do not overlap. These memory objects will also
@@ -151,14 +172,27 @@ extern "C" {
      may not always work. */
   void klee_alias_function(const char* fn_name, const char* new_fn_name);
 
+  /* Similar to klee_alias_function, but uses a regex to match
+     the function's name; e.g. klee_alias_function_regex("foo.*", "bar")
+     will replace "foo", "foox", "foo123" with "bar".
+     Particularly useful to replace a static function, which
+     may be replicated many times with a suffixed name. */
+  void klee_alias_function_regex(const char* fn_regex, const char* new_fn_name);
+
+  /* Undoes an alias (either a name or a regex). */
+  void klee_alias_undo(const char* alias);
+
   /* Print stack trace. */
   void klee_stack_trace(void);
 
   /* Print range for given argument and tagged with name */
   void klee_print_range(const char * name, int arg );
 
-  /* Merge current states together if possible */
-  void klee_merge();
+  /* Open a merge */
+  void klee_open_merge();
+
+  /* Merge all paths of the state that went through klee_open_merge */
+  void klee_close_merge();
 
 #define KLEE_TRACE_PARAM_PROTO(suffix, type) \
   void klee_trace_param##suffix(type param, const char* name)
@@ -166,6 +200,7 @@ extern "C" {
   KLEE_TRACE_PARAM_PROTO(d, double);
   KLEE_TRACE_PARAM_PROTO(l, long);
   KLEE_TRACE_PARAM_PROTO(ll, long long);
+  KLEE_TRACE_PARAM_PROTO(_u16, uint16_t);
   KLEE_TRACE_PARAM_PROTO(_i32, int32_t);
   KLEE_TRACE_PARAM_PROTO(_i64, int64_t);
 #undef KLEE_TRACE_PARAM_PROTO
@@ -197,17 +232,20 @@ extern "C" {
   void klee_trace_ret_ptr_field_just_ptr(int offset, int width, char* name);
   void klee_trace_param_ptr_nested_field(void* ptr, int base_offset,
                                          int offset, int width, char* name);
+  void klee_trace_param_ptr_nested_field_directed(void* ptr, int base_offset,
+                                                  int offset, int width, char* name,
+                                                  TracingDirection td);
   void klee_trace_ret_ptr_nested_field(int base_offset,
                                        int offset, int width, char* name);
-  void klee_trace_extra_ptr(void* ptr, int width, char* name, char* type);
-  void klee_trace_extra_ptr_field(void* ptr, int offset, int width, char* name);
+  void klee_trace_extra_ptr(void* ptr, int width, char* name, char* type, TracingDirection td);
+  void klee_trace_extra_ptr_field(void* ptr, int offset, int width, char* name, TracingDirection td);
   void klee_trace_extra_ptr_field_just_ptr(void* ptr, int offset,
                                            int width, char* name);
   void klee_trace_extra_ptr_nested_field(void* ptr, int base_offset,
-                                         int offset, int width, char* name);
+                                         int offset, int width, char* name, TracingDirection td);
   void klee_trace_extra_ptr_nested_nested_field(void* ptr, int base_base_offset,
                                                 int base_offset, int offset,
-                                                int width, char* name);
+                                                int width, char* name, TracingDirection td);
 
   void klee_forget_all();
 

@@ -18,6 +18,7 @@ struct KTest;
 
 namespace llvm {
 class Function;
+class LLVMContext;
 class Module;
 class raw_ostream;
 class raw_fd_ostream;
@@ -67,7 +68,7 @@ public:
   enum LogType
   {
 	  STP, //.CVC (STP's native language)
-	  KQUERY, //.PC files (kQuery native language)
+	  KQUERY, //.KQUERY files (kQuery native language)
 	  SMTLIB2 //.SMT2 files (SMTLIB version 2 files)
   };
 
@@ -94,7 +95,8 @@ protected:
 public:
   virtual ~Interpreter() {}
 
-  static Interpreter *create(const InterpreterOptions &_interpreterOpts,
+  static Interpreter *create(llvm::LLVMContext &ctx,
+                             const InterpreterOptions &_interpreterOpts,
                              InterpreterHandler *ih);
 
   /// Register the module to be executed.  
@@ -136,6 +138,8 @@ public:
   virtual void setHaltExecution(bool value) = 0;
 
   virtual void setInhibitForking(bool value) = 0;
+
+  virtual void prepareForEarlyExit() = 0;
 
   /*** State accessor methods ***/
 

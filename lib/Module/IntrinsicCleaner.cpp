@@ -10,7 +10,6 @@
 #include "Passes.h"
 
 #include "klee/Config/Version.h"
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 3)
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -21,29 +20,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/IRBuilder.h"
-
-#else
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/InstrTypes.h"
-#include "llvm/Instruction.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 2)
-#include "llvm/IRBuilder.h"
-#else
-#include "llvm/Support/IRBuilder.h"
-#endif
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-#include "llvm/Target/TargetData.h"
-#else
-#include "llvm/DataLayout.h"
-#endif
-#endif
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -59,20 +35,20 @@ bool IntrinsicCleanerPass::runOnModule(Module &M) {
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f)
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b)
       dirty |= runOnBasicBlock(*b, M);
-    if (Function *Declare = M.getFunction("llvm.trap"))
-      Declare->eraseFromParent();
+
+  if (Function *Declare = M.getFunction("llvm.trap")) {
+    Declare->eraseFromParent();
+    dirty = true;
+  }
   return dirty;
 }
 
 bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
   bool dirty = false;
   bool block_split=false;
+  LLVMContext &ctx = M.getContext();
   
-#if LLVM_VERSION_CODE <= LLVM_VERSION(3, 1)
-  unsigned WordSize = TargetData.getPointerSizeInBits() / 8;
-#else
   unsigned WordSize = DataLayout.getPointerSizeInBits() / 8;
-#endif
   for (BasicBlock::iterator i = b.begin(), ie = b.end();
        (i != ie) && (block_split == false);) {
     IntrinsicInst *ii = dyn_cast<IntrinsicInst>(&*i);
@@ -94,18 +70,18 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         Value *src = ii->getArgOperand(1);
 
         if (WordSize == 4) {
-          Type *i8pp = PointerType::getUnqual(PointerType::getUnqual(Type::getInt8Ty(getGlobalContext())));
+          Type *i8pp = PointerType::getUnqual(PointerType::getUnqual(Type::getInt8Ty(ctx)));
           Value *castedDst = CastInst::CreatePointerCast(dst, i8pp, "vacopy.cast.dst", ii);
           Value *castedSrc = CastInst::CreatePointerCast(src, i8pp, "vacopy.cast.src", ii);
           Value *load = new LoadInst(castedSrc, "vacopy.read", ii);
           new StoreInst(load, castedDst, false, ii);
         } else {
           assert(WordSize == 8 && "Invalid word size!");
-          Type *i64p = PointerType::getUnqual(Type::getInt64Ty(getGlobalContext()));
+          Type *i64p = PointerType::getUnqual(Type::getInt64Ty(ctx));
           Value *pDst = CastInst::CreatePointerCast(dst, i64p, "vacopy.cast.dst", ii);
           Value *pSrc = CastInst::CreatePointerCast(src, i64p, "vacopy.cast.src", ii);
           Value *val = new LoadInst(pSrc, std::string(), ii); new StoreInst(val, pDst, ii);
-          Value *off = ConstantInt::get(Type::getInt64Ty(getGlobalContext()), 1);
+          Value *off = ConstantInt::get(Type::getInt64Ty(ctx), 1);
           pDst = GetElementPtrInst::Create(pDst, off, std::string(), ii);
           pSrc = GetElementPtrInst::Create(pSrc, off, std::string(), ii);
           val = new LoadInst(pSrc, std::string(), ii); new StoreInst(val, pDst, ii);
@@ -220,12 +196,12 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         // a call of the abort() function.
         Function *F = cast<Function>(
           M.getOrInsertFunction(
-            "abort", Type::getVoidTy(getGlobalContext()), NULL));
+            "abort", Type::getVoidTy(ctx), NULL));
         F->setDoesNotReturn();
         F->setDoesNotThrow();
 
         CallInst::Create(F, Twine(), ii);
-        new UnreachableInst(getGlobalContext(), ii);
+        new UnreachableInst(ctx, ii);
 
         ii->eraseFromParent();
 
@@ -242,7 +218,7 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         assert(minArgAsInt && "Second arg is not a ConstantInt");
         assert(minArgAsInt->getBitWidth() == 1 && "Second argument is not an i1");
         Value *replacement = NULL;
-        LLVM_TYPE_Q IntegerType *intType = dyn_cast<IntegerType>(ii->getType());
+        IntegerType *intType = dyn_cast<IntegerType>(ii->getType());
         assert(intType && "intrinsic does not have integer return type");
         if (minArgAsInt->isZero()) {
           // min=false
@@ -263,7 +239,7 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         assert(dst && "Failed to get first argument");
         Value *src = ii->getArgOperand(1);
         assert(src && "Failed to get second argument");
-        LLVM_TYPE_Q VectorType* vecType = cast<VectorType>(src->getType());
+        VectorType* vecType = cast<VectorType>(src->getType());
         PointerType *vecPointerType = PointerType::get(vecType, 0);
         CastInst* cast = new BitCastInst(dst, vecPointerType, "", ii);
         new StoreInst(src, cast, false, ii);
@@ -271,6 +247,62 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         dirty = true;
         break;
       }
+
+      // The following instructions are all replaced by an "unreachable" since we don't actually use them...
+
+      // ptestz described in http://dpdk.org/ml/archives/dev/2014-August/004567.html
+      case Intrinsic::x86_sse41_ptestz: {
+        assert(ii->getNumArgOperands() == 2 && "wrong number of arguments");
+        Value *a = ii->getArgOperand(0);
+        assert(a && "Failed to get first argument");
+        Value *b = ii->getArgOperand(1);
+        assert(b && "Failed to get second argument");
+
+        Type* i32 = Type::getInt32Ty(ctx);
+
+        /*I think the instruction should look like this...
+        IRBuilder<> builder(ii->getParent(), ii);
+	ii->replaceAllUsesWith(
+          builder.CreateNot(
+            builder.CreateAnd(
+              builder.CreateAnd(
+                builder.CreateExtractElement(a, ConstantInt::get(i32, 0)),
+                builder.CreateExtractElement(b, ConstantInt::get(i32, 0))
+              ),
+              builder.CreateAnd(
+                builder.CreateExtractElement(a, ConstantInt::get(i32, 1)),
+                builder.CreateExtractElement(b, ConstantInt::get(i32, 1))
+              )
+            )
+          )
+        );*/
+        new UnreachableInst(ctx, ii);
+        ii->replaceAllUsesWith(ConstantInt::get(i32, 424242));
+        ii->eraseFromParent();
+        dirty = true;
+        break;
+      }
+      case Intrinsic::x86_ssse3_pshuf_b_128: {
+        assert(ii->getNumArgOperands() == 2 && "wrong number of arguments");
+        Value *a = ii->getArgOperand(0);
+        assert(a && "Failed to get first argument");
+        new UnreachableInst(ctx, ii);
+        ii->replaceAllUsesWith(a);
+        ii->eraseFromParent();
+        dirty = true;
+        break;
+      }
+      case Intrinsic::x86_sse41_phminposuw: {
+        assert(ii->getNumArgOperands() == 2 && "wrong number of arguments");
+        Value *a = ii->getArgOperand(0);
+        assert(a && "Failed to get first argument");
+        new UnreachableInst(ctx, ii);
+        ii->replaceAllUsesWith(a);
+        ii->eraseFromParent();
+        dirty = true;
+        break;
+      }
+
       // consistency fences, just ignore them
       case Intrinsic::x86_sse_sfence:
       case Intrinsic::x86_sse2_lfence:
