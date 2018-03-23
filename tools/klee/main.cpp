@@ -668,6 +668,14 @@ bool dumpCallInfo(const CallInfo& ci, llvm::raw_ostream& file) {
   return true;
 }
 
+void dumpTracedPtr(const TracedPtr& ptr,
+                   const ExecutionState& state,
+                   llvm::raw_ostream& file) {
+  file <<ptr.name <<"&" <<ptr.addr <<"/" <<ptr.width <<" = ";
+  file <<state.readMemoryChunk(ptr.addr, ptr.width, true);
+  file <<"\n";
+}
+
 void dumpPointeeInSExpr(const FieldDescr& pointee,
                         llvm::raw_ostream& file);
 
@@ -866,6 +874,12 @@ void KleeHandler::processCallPath(const ExecutionState &state) {
     const CallInfo& ci = *iter;
     bool dumped = dumpCallInfo(ci, *file);
     if (!dumped) break;
+  }
+  *file <<";;-- Unconditionaly traced variables --\n";
+  for (std::vector<TracedPtr>::const_iterator iter = state.uncondTracedVars.begin(),
+         end = state.uncondTracedVars.end(); iter != end; ++iter) {
+    const TracedPtr& ptr = *iter;
+    dumpTracedPtr(ptr, state, *file);
   }
   *file <<";;-- Constraints --\n";
   for (ConstraintManager::constraint_iterator ci = state.constraints.begin(),

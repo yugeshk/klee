@@ -169,6 +169,7 @@ namespace klee {
     HANDLER(handleForbidAccess);
     HANDLER(handleAllowAccess);
     HANDLER(handleDumpConstraints);
+    HANDLER(handleIncludeIntoTrace);
 #undef HANDLER
   };
 } // End klee namespace

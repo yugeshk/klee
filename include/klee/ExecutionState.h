@@ -97,6 +97,12 @@ struct FieldDescr {
   bool eq(const FieldDescr& other) const;
 };
 
+struct TracedPtr {
+  ref<Expr> addr;
+  Expr::Width width;
+  std::string name;
+};
+
 struct CallArg {
   ref<Expr> expr;
   bool isPtr;
@@ -284,7 +290,9 @@ public:
   /// @brief Set of used array names for this state.  Used to avoid collisions.
   std::set<std::string> arrayNames;
 
+  // Tracing staff
   std::vector<CallInfo> callPath;
+  std::vector<TracedPtr> uncondTracedVars;
   SymbolSet relevantSymbols;
 
   /// @brief: a flag indicating that the state is genuine and not
@@ -341,6 +349,9 @@ public:
   ref<Expr> readMemoryChunk(ref<Expr> addr,
                             Expr::Width width,
                             bool circumventInaccessibility) const;
+  void traceVarUnconditionally(ref<Expr> val,
+                               Expr::Width width,
+                               std::string name);
   void traceArgValue(ref<Expr> val, std::string name);
   void traceArgPtr(ref<Expr> arg, Expr::Width width,
                    std::string name,
