@@ -144,7 +144,6 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     arrayNames(state.arrayNames),
     openMergeStack(state.openMergeStack),
     callPath(state.callPath),
-    uncondTracedVars(state.uncondTracedVars),
     relevantSymbols(state.relevantSymbols),
     doTrace(state.doTrace)
 {
@@ -549,16 +548,6 @@ void ExecutionState::traceRet() {
     callPath.back().callContext.insert(callPath.back().callContext.end(),
                                        constrs.begin(), constrs.end());
   }
-}
-
-void ExecutionState::traceVarUnconditionally(ref<Expr> val,
-                                             Expr::Width width,
-                                             std::string name) {
-  TracedPtr ptr;
-  ptr.addr = val;
-  ptr.width = width;
-  ptr.name = name;
-  uncondTracedVars.push_back(ptr);
 }
 
 void ExecutionState::traceRetPtr(Expr::Width width,

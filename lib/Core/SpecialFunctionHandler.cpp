@@ -149,7 +149,6 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_forbid_access", handleForbidAccess, false),
   add("klee_allow_access", handleAllowAccess, false),
   add("klee_dump_constraints", handleDumpConstraints, false),
-  add("klee_include_into_trace", handleIncludeIntoTrace, false),
 
   // operator delete[](void*)
   add("_ZdaPv", handleDeleteArray, false),
@@ -1402,19 +1401,4 @@ void SpecialFunctionHandler::handleDumpConstraints
 (ExecutionState &state, KInstruction *target,
  std::vector<ref<Expr> > &arguments) {
   state.dumpConstraints();
-}
-
-void SpecialFunctionHandler::handleIncludeIntoTrace
-(ExecutionState &state, KInstruction *target,
- std::vector<ref<Expr> > &arguments) {
-  if (!isa<klee::ConstantExpr>(arguments[1])) {
-    executor.terminateStateOnError
-      (state, "Width must be a static constant.",
-       Executor::User);
-    return;
-  }
-  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
-  width = width * 8;//Convert to bits.
-  std::string name = readStringAtAddress(state, arguments[2]);
-  state.traceVarUnconditionally(arguments[0], width, name);
 }

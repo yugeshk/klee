@@ -257,8 +257,6 @@ extern "C" {
 
   void klee_dump_constraints();
 
-  void klee_include_into_trace(void* ptr, int width, char* name);
-
 #ifdef __cplusplus
 }
 #endif
