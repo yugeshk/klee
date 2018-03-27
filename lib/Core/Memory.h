@@ -216,8 +216,8 @@ public:
   void write32(unsigned offset, uint32_t value);
   void write64(unsigned offset, uint64_t value);
 
-  void forgetThese(const BitArray *bytesToForget);
-  void forgetAll();
+  const Array *forgetThese(const BitArray *bytesToForget);
+  const Array *forgetAll();
 
 private:
   const UpdateList &getUpdates() const;

@@ -874,7 +874,9 @@ void ExecutionState::symbolizeConcretes() {
     ObjectState *os = obj_I->second;
     if (!os->readOnly && os->isAccessible()) {
       ObjectState *osw = addressSpace.getWriteable(mo, os);
-      osw->forgetAll();
+      const Array *array = osw->forgetAll();
+      mo->name = array->name;
+      symbolics.push_back(std::make_pair(mo, array));
     }
   }
 }
@@ -1331,10 +1333,12 @@ ExecutionState *LoopInProcess::makeRestartState() {
     } else {
       wos = newState->addressSpace.getWriteable(mo, os);
     }
-    wos->forgetThese(bytes);
+    const Array *array = wos->forgetThese(bytes);
     if (wasInaccessible) {
       wos->forbidAccessWithLastMessage();
     }
+    mo->name = array->name;
+    newState->symbolics.push_back(std::make_pair(mo, array));
   }
   if (lastRoundUpdated) {
     LOG_LA("[" << loop << "]Some more objects were changed."
