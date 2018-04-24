@@ -107,6 +107,14 @@ ExecutionState::~ExecutionState() {
     if (mo->refCount == 0)
       delete mo;
   }
+
+  for(auto it = havocs.begin(); it != havocs.end(); ++it) {
+    const MemoryObject *mo = it->first;
+    assert(mo->refCount > 0);
+    mo->refCount--;
+    if (mo->refCount == 0)
+      delete mo;
+  }
   delete executionStateForLoopInProcess;
 
   while (!stack.empty()) popFrame();
@@ -141,6 +149,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     coveredLines(state.coveredLines),
     ptreeNode(state.ptreeNode),
     symbolics(state.symbolics),
+    havocs(state.havocs),
     arrayNames(state.arrayNames),
     openMergeStack(state.openMergeStack),
     callPath(state.callPath),
@@ -149,6 +158,17 @@ ExecutionState::ExecutionState(const ExecutionState& state):
 {
   for (unsigned int i=0; i<symbolics.size(); i++)
     symbolics[i].first->refCount++;
+
+  for(auto it = havocs.begin(); it != havocs.end(); ++it) {
+    it->first->refCount++;
+  }
+}
+
+void ExecutionState::addHavocInfo(const MemoryObject *mo,
+                                  const std::string &name) {
+  havocs[mo].name = name;
+  havocs[mo].havoced = false;
+  mo->refCount++;
 }
 
 ExecutionState *ExecutionState::branch() {
@@ -1336,7 +1356,18 @@ ExecutionState *LoopInProcess::makeRestartState() {
     if (wasInaccessible) {
       wos->forbidAccessWithLastMessage();
     }
-    newState->symbolics.push_back(std::make_pair(mo, array));
+
+    auto havoc_info = newState->havocs.find(mo);
+    if (havoc_info == newState->havocs.end()) {
+      printf("Unexpected memory location being havoced.\n");
+      assert(0 && "Possible havoc location must have been predelcared");
+    }
+
+    // Protocol the generated value for later reporting in the ktest file.
+    havoc_info->second.value = array;
+
+    // Do not record this symbol, as it was not generated with klee_make_symbolic.
+    //newState->symbolics.push_back(std::make_pair(mo, array));
   }
   if (lastRoundUpdated) {
     LOG_LA("[" << loop << "]Some more objects were changed."
