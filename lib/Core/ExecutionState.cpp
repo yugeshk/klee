@@ -1364,8 +1364,9 @@ ExecutionState *LoopInProcess::makeRestartState() {
       assert(0 && "Possible havoc location must have been predelcared");
     }
 
-    // Protocol the generated value for later reporting in the ktest file.
+    // Remember the generated value for later reporting in the ktest file.
     havoc_info->second.value = array;
+    havoc_info->second.havoced = true;
 
     // Do not record this symbol, as it was not generated with klee_make_symbolic.
     //newState->symbolics.push_back(std::make_pair(mo, array));
@@ -1421,7 +1422,7 @@ bool klee::updateDiffMask(StateByteMask* mask,
       (std::pair<const MemoryObject *, BitArray *>(obj, 0));
 
     if (state.havocs.find(obj) == state.havocs.end()) {
-      klee_error("Unexpected memory location changed its value during invariant analysis.");
+      klee_error("Unexpected memory location changed its value during invariant analysis: %s", obj->name.c_str());
     }
 
     if (insRez.second) insRez.first->second =
