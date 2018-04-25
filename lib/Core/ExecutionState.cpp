@@ -152,6 +152,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     ptreeNode(state.ptreeNode),
     symbolics(state.symbolics),
     havocs(state.havocs),
+    havocNames(state.havocNames),
     arrayNames(state.arrayNames),
     callPath(state.callPath),
     relevantSymbols(state.relevantSymbols),
