@@ -3702,6 +3702,12 @@ void Executor::executePossiblyHavoc(ExecutionState &state,
     return;
   }
 
+  unsigned id = 0;
+  std::string uniqueName = name;
+  while (!state.havocNames.insert(uniqueName).second) {
+    uniqueName = name + "_" + llvm::utostr(++id);
+  }
+
   state.addHavocInfo(mo, name);
 }
 
@@ -3866,10 +3872,7 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
                                    std::pair<std::string,
                                    std::vector<unsigned char> > >
                                    &res,
-                                   std::vector<
-                                   std::pair<std::string,
-                                   std::vector<unsigned char> > >
-                                   &havocs) {
+                                   std::vector<HavocedLocation> &havocs) {
   solver->setTimeout(coreSolverTimeout);
 
   ExecutionState tmp(state);
@@ -3905,12 +3908,14 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   std::vector< std::vector<unsigned char> > values;
   std::vector<const Array*> objects;
   std::vector<std::string> havoc_names;
+  std::vector<BitArray> havoc_masks;
   for (unsigned i = 0; i != state.symbolics.size(); ++i)
     objects.push_back(state.symbolics[i].second);
   for (auto i = state.havocs.begin(); i != state.havocs.end(); ++i) {
     if (i->second.havoced) {
       objects.push_back(i->second.value);
       havoc_names.push_back(i->second.name);
+      havoc_masks.push_back(i->second.mask);
     }
   }
   bool success = solver->getInitialValues(tmp, objects, values);
@@ -3923,11 +3928,14 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   }
   unsigned i = 0;
   for (; i != state.symbolics.size(); ++i) {
-    res.push_back(std::make_pair(state.symbolics[i].first->name, values[i]));
+    res.push_back(std::make_pair(objects[i]->name, values[i]));
   }
   for (; i < values.size(); ++i) {
     int index = i - state.symbolics.size();
-    havocs.push_back(std::make_pair(havoc_names[index], values[i]));
+    HavocedLocation hl = {.name = havoc_names[index],
+                          .value = values[i],
+                          .mask = havoc_masks[index]};
+    havocs.push_back(hl);
   }
   return true;
 }

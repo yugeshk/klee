@@ -453,7 +453,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
   if (!NoOutput) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
-    std::vector< std::pair<std::string, std::vector<unsigned char> > > havocs;
+    std::vector< HavocedLocation > havocs;
     bool success = m_interpreter->getSymbolicSolution(state, out, havocs);
 
     if (!success)
@@ -472,24 +472,56 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       b.numObjects = out.size();
       b.objects = new KTestObject[b.numObjects];
       assert(b.objects);
+      std::string *names = new std::string[b.numObjects];
       for (unsigned i=0; i<b.numObjects; i++) {
         KTestObject *o = &b.objects[i];
-        o->name = const_cast<char*>(out[i].first.c_str());
+        // Drop the '..._1' suffix
+        std::string name = out[i].first;
+        size_t last_underscore = out[i].first.rfind("_");
+        if (last_underscore != std::string::npos) {
+          bool all_digits = true;
+          for (unsigned j = last_underscore + 1; j < name.size(); ++j) {
+            if ('0' <= name[j] && name[j] <= '9') { //fine
+            } else {
+              all_digits = false;
+              break;
+            }
+          }
+          if (all_digits) {
+            name = name.substr(0, last_underscore);
+          }
+        }
+        names[i] = name;
+        o->name = const_cast<char*>(names[i].c_str());
         o->numBytes = out[i].second.size();
         o->bytes = new unsigned char[o->numBytes];
         assert(o->bytes);
         std::copy(out[i].second.begin(), out[i].second.end(), o->bytes);
       }
       b.numHavocs = havocs.size();
-      b.havocs = new KTestObject[b.numHavocs];
+      b.havocs = new KTestHavocedLocation[b.numHavocs];
       assert(b.havocs);
       for (unsigned i=0; i<b.numHavocs; i++) {
-        KTestObject *o = &b.havocs[i];
-        o->name = const_cast<char*>(havocs[i].first.c_str());
-        o->numBytes = havocs[i].second.size();
+        KTestHavocedLocation *o = &b.havocs[i];
+        o->name = const_cast<char*>(havocs[i].name.c_str());
+        o->numBytes = havocs[i].value.size();
         o->bytes = new unsigned char[o->numBytes];
         assert(o->bytes);
-        std::copy(havocs[i].second.begin(), havocs[i].second.end(), o->bytes);
+        std::copy(havocs[i].value.begin(), havocs[i].value.end(), o->bytes);
+        unsigned mask_size = (o->numBytes + 31)/32*4;
+        assert(mask_size <= havocs[i].mask.size());
+        o->mask = new uint32_t[mask_size/sizeof(uint32_t)];
+        assert(o->mask);
+        memcpy(o->mask, havocs[i].mask.get_bits(), mask_size);
+        // printf("dumping mask for %s: ", o->name);
+        // for (unsigned i = 0; i < mask_size/4*32; ++i) {
+        //   uint32_t word = i / 32;
+        //   uint32_t bit_id = (i - word * 32);
+        //   uint32_t bit_mask = 1 << bit_id;
+        //   printf("%s", (bit_mask & o->mask[word]) ? "1" : "0");
+        // }
+        // printf("\n");
+        // fflush(stdout);
       }
 
       if (!kTest_toFile(&b, getOutputFilename(getTestFilename("ktest", id)).c_str())) {
@@ -508,6 +540,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       for (unsigned i=0; i<b.numObjects; i++)
         delete[] b.objects[i].bytes;
       delete[] b.objects;
+      delete[] names;
     }
 
     if (errorMessage) {
