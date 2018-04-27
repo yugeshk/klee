@@ -769,7 +769,7 @@ void ExecutionState::traceExtraPtr(size_t ptr, Expr::Width width,
   extraPtr->pointee.type = type;
   extraPtr->pointee.doTraceValueIn = trace_in;
   extraPtr->pointee.doTraceValueOut = trace_out;
-  extraPtr->accessibleIn =
+  extraPtr->accessibleIn = trace_in &&
     isAccessibleAddr(ConstantExpr::alloc(ptr, 8*sizeof(size_t)));
 
   SymbolSet indirectSymbols;
