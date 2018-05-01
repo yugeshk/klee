@@ -860,13 +860,13 @@ bool dumpExtraPtrSExpr(const CallExtraPtr& cep, llvm::raw_ostream& file) {
       file <<"))\n";
     } else {
       file <<"(Closing ";
-      dumpPointeeOutSExpr(cep.pointee, file);
+      dumpPointeeInSExpr(cep.pointee, file);
       file <<")\n";
     }
   } else {
     if (cep.accessibleOut) {
       file <<"(Opening ";
-      dumpPointeeInSExpr(cep.pointee, file);
+      dumpPointeeOutSExpr(cep.pointee, file);
       file <<")\n";
     } else {
       llvm::errs() <<"The extra pointer must be accessible either at "
@@ -1415,7 +1415,18 @@ static const char *modelledExternals[] = {
   "_ZTVN10__cxxabiv120__si_class_type_infoE",
   "_ZTVN10__cxxabiv121__vmi_class_type_infoE",
 
+  "klee_trace_extra_ptr",
+  "klee_trace_extra_ptr_field",
+  "klee_trace_extra_ptr_nested_field",
+  "klee_trace_extra_ptr_nested_nested_field",
+  "klee_trace_param_i64",
+  "klee_trace_param_ptr_directed",
+  "klee_trace_param_ptr_field_directed",
+  "klee_trace_param_ptr_nested_field_directed",
+  "klee_trace_param_u16",
+
   // special functions
+  "_stdio_init",
   "_assert",
   "__assert_fail",
   "__assert_rtn",
@@ -1450,11 +1461,13 @@ static const char *modelledExternals[] = {
   "klee_report_error",
   "klee_trace_param_fptr",
   "klee_trace_param_i32",
+  "klee_trace_param_u32",
   "klee_trace_param_ptr",
   "klee_trace_param_just_ptr",
   "klee_trace_param_ptr_field",
   "klee_trace_param_ptr_field_just_ptr",
   "klee_trace_param_ptr_nested_field",
+  "klee_trace_param_tagged_ptr",
   "klee_trace_ret",
   "klee_induce_invariants",
   "klee_trace_ret_ptr",
@@ -1485,6 +1498,7 @@ static const char *modelledExternals[] = {
   "__ubsan_handle_sub_overflow",
   "__ubsan_handle_mul_overflow",
   "__ubsan_handle_divrem_overflow",
+  "__ubsan_handle_negate_overflow"
 };
 // Symbols we aren't going to warn about
 static const char *dontCareExternals[] = {
