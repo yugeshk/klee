@@ -3761,7 +3761,8 @@ void Executor::runFunctionAsMain(Function *f,
   }
 
   ExecutionState *state = new ExecutionState(kmodule->functionMap[f]);
-  
+
+  state->condoneUndeclaredHavocs = interpreterOpts.CondoneUndeclaredHavocs;
   if (pathWriter) 
     state->pathOS = pathWriter->open();
   if (symPathWriter) 
