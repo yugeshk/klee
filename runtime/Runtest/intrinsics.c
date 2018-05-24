@@ -131,7 +131,7 @@ void klee_make_symbolic(void *array, size_t nbytes, const char *name) {
       }
       if (strcmp(name, o->name) != 0) {
         report_internal_error(
-            "object name mismatch. Requesting \"%s\" but returning \"%s\"",
+            "object name mismatch. Requesting \"%s\" but returning \"%s\"\n",
             name, o->name);
       }
       memcpy(array, o->bytes, nbytes < o->numBytes ? nbytes : o->numBytes);
@@ -282,6 +282,10 @@ int klee_int(const char *name) {
   int x;
   klee_make_symbolic(&x, sizeof x, name);
   return x;
+}
+
+void klee_abort() {
+  exit(-1);
 }
 
 /* not sure we should even define.  is for debugging. */
