@@ -18,33 +18,37 @@ function stitch_traces {
 
     USER_VAR_STR="$(echo "$USER_VAR_STR" | sed -e 's/^,//')"
 
-    parallel "echo -n \$(basename {} .call_path)' '; \
-              $SCRIPT_DIR/../build/bin/stitch-perf-contract \
+    parallel "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../vnds/perf-contracts/perf-contracts.so \
                   --user-vars \"$USER_VAR_STR\" \
-                  {} 2>/dev/null" ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
+                  {} 2>/dev/null \
+                | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
+                ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   else
-    parallel "echo -n \$(basename {} .call_path)' '; \
-              $SCRIPT_DIR/../build/bin/stitch-perf-contract \
+    parallel "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../vnds/perf-contracts/perf-contracts.so \
-                  {} 2>/dev/null" ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
+                  {} 2>/dev/null \
+                | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
+                ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   fi
 
-  awk '
-  {
-    if ($2 < 0 || totals[$1] < 0) {
-      totals[$1] = -1;
-    } else {
-      totals[$1] += $2;
-    }
-  }
+  join -t, -j1 \
+      <(sort klee-last/stateful-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
+      <(sort klee-last/stateless-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
+    | sed -e 's/_/,/' \
+    | awk -F, '
+      {
+        performance = ($3 + $4);
+        if (performance > max_performance[$2]) {
+          max_performance[$2] = performance;
+        }
+      }
 
-  END {
-    for (trace in totals) {
-      print totals[trace];
-    }
-  }' $TRACES_DIR/stateful-perf.txt $TRACES_DIR/stateless-perf.txt \
-    | sort -n | tail -n 1
+      END {
+        for (metric in max_performance) {
+          print metric "," max_performance[metric];
+        }
+      }'
 }
 
 
@@ -57,7 +61,8 @@ done
 
 if [ ${#USER_VARS[@]} -gt 0 ]; then
   BASELINE_PERF=$(stitch_traces "$(declare -p USER_VARS)")
-  echo $BASELINE_PERF
+
+  echo "$BASELINE_PERF"
 
   for VAR in "${!USER_VARS[@]}"; do
     USER_VARS_STR=$(declare -p USER_VARS)
@@ -65,7 +70,10 @@ if [ ${#USER_VARS[@]} -gt 0 ]; then
     USER_VARS_VARIANT["$VAR"]=$((${USER_VARS[$VAR]} + 1))
 
     VARIANT_PERF=$(stitch_traces "$(declare -p USER_VARS_VARIANT)")
-    echo "$(($VARIANT_PERF - $BASELINE_PERF))/$VAR"
+    join -t, -j1 \
+        <(echo "$BASELINE_PERF") \
+        <(echo "$VARIANT_PERF") \
+      | awk -F, "{ print \$1 \",\" (\$3 - \$2) \"/$VAR\"; }"
   done
 else
   stitch_traces ""
