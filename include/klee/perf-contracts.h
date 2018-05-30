@@ -26,6 +26,12 @@ extern "C" {
 void contract_init();
 
 /**
+ * Gets the list of metrics that the contract supports
+ * @returns A set of strings, each being a supported metric
+ */
+std::set<std::string> contract_get_metrics();
+
+/**
  * Gets the list of user-defined variables that the contract exports. Returns an
  * empty list if no user variables are to be exported
  * @returns A map associating each variable name to its worst-case value.
@@ -46,8 +52,7 @@ contract_get_optimization_variables();
  *
  * @returns A set of symbol declarations used.
  */
-std::set<std::string>
-contract_get_symbols();
+std::set<std::string> contract_get_symbols();
 
 /**
  * Gets a set of functions with contracts.
@@ -84,15 +89,16 @@ std::string contract_get_subcontract_constraints(std::string function_name,
                                                  int sub_contract_idx);
 
 /**
- * Computes the bound on the number of CPU cycles for the given subcontract.
+ * Computes the given metric for the given subcontract.
  *
  * @param function_name The name of the contract function.
  * @param sub_contract_idx The sub contract index.
+ * @param metric The name of the performance metric
  * @param variables The assignment for all user-defined and optimization
  * variables.
  * @returns The computed CPU cycle bound.
  */
 long contract_get_sub_contract_performance(
-    std::string function_name, int sub_contract_idx,
+    std::string function_name, int sub_contract_idx, std::string metric,
     std::map<std::string, long> variables);
 }
