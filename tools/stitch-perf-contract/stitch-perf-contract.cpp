@@ -102,13 +102,25 @@ call_path_t *load_call_path(std::string file_name,
           }
         }
 
-        assert(kQuery.substr(kQuery.length() - 2) == "])");
-        kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
+        if (! expressions_str.empty()) {
+          if (kQuery.substr(kQuery.length() - 2) == "])") {
+            kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
 
-        for (auto eit : expressions_str) {
-          kQuery += "\n         " + eit;
+            for (auto eit : expressions_str) {
+              kQuery += "\n         " + eit;
+            }
+            kQuery += "])";
+          } else if (kQuery.substr(kQuery.length() - 6) == "false)") {
+            kQuery = kQuery.substr(0, kQuery.length() - 1) + "\n[\n";
+
+            for (auto eit : expressions_str) {
+              kQuery += "\n         " + eit;
+            }
+            kQuery += "])";
+          } else {
+            assert(false && "Mal-formed kQuery.");
+          }
         }
-        kQuery += "])";
 
         llvm::MemoryBuffer *MB = llvm::MemoryBuffer::getMemBuffer(kQuery);
         klee::ExprBuilder *Builder = klee::createDefaultExprBuilder();
@@ -399,6 +411,12 @@ process_candidate(call_path_t *call_path, void *contract,
                 << " is SAT." << std::endl;
 #endif
       return {};
+    }
+  }
+
+  if (total_performance.empty()) {
+    for (auto metric : contract_get_metrics()) {
+      total_performance[metric] = 0;
     }
   }
 
