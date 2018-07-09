@@ -221,7 +221,11 @@ int main(int argc, char **argv, char **envp) {
       tx_expr = call.extra_vars["mbuf"].first;
     }
   }
-  assert(!tx_expr.isNull());
+  if (tx_expr.isNull()) {
+    std::cout << "Sender doesn't send." << std::endl;
+    std::cout << "Call paths incompatible." << std::endl;
+    return 1;
+  }
 
   klee::ref<klee::Expr> rx_expr;
   for (auto call : sender_call_path->calls) {
@@ -230,7 +234,11 @@ int main(int argc, char **argv, char **envp) {
       rx_expr = call.extra_vars["incoming_package"].first;
     }
   }
-  assert(!rx_expr.isNull());
+  if (rx_expr.isNull()) {
+    std::cout << "Receiver doesn't receive." << std::endl;
+    std::cout << "Call paths incompatible." << std::endl;
+    return 1;
+  }
 
   klee::ref<klee::Expr> eq_expr = exprBuilder->Eq(rx_expr, tx_expr);
 
