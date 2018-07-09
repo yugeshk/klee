@@ -64,17 +64,17 @@ if [ ${#USER_VARS[@]} -gt 0 ]; then
 
   echo "$BASELINE_PERF"
 
-  for VAR in "${!USER_VARS[@]}"; do
-    USER_VARS_STR=$(declare -p USER_VARS)
-    eval "declare -A USER_VARS_VARIANT="${USER_VARS_STR#*=}
-    USER_VARS_VARIANT["$VAR"]=$((${USER_VARS[$VAR]} + 1))
-
-    VARIANT_PERF=$(stitch_traces "$(declare -p USER_VARS_VARIANT)")
-    join -t, -j1 \
-        <(echo "$BASELINE_PERF") \
-        <(echo "$VARIANT_PERF") \
-      | awk -F, "{ print \$1 \",\" (\$3 - \$2) \"/$VAR\"; }"
-  done
+#   for VAR in "${!USER_VARS[@]}"; do
+#     USER_VARS_STR=$(declare -p USER_VARS)
+#     eval "declare -A USER_VARS_VARIANT="${USER_VARS_STR#*=}
+#     USER_VARS_VARIANT["$VAR"]=$((${USER_VARS[$VAR]} + 1))
+# 
+#     VARIANT_PERF=$(stitch_traces "$(declare -p USER_VARS_VARIANT)")
+#     join -t, -j1 \
+#         <(echo "$BASELINE_PERF") \
+#         <(echo "$VARIANT_PERF") \
+#       | awk -F, "{ print \$1 \",\" (\$3 - \$2) \"/$VAR\"; }"
+#   done
 else
   stitch_traces ""
 fi
