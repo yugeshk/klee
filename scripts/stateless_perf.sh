@@ -9,7 +9,7 @@ verif_arg=${3:-verify-dpdk}
 
 cd $traces_dr
 
-parallel "$py_scripts_dir/process_trace.sh {} \$(basename {} .instructions).packet_relevant_instructions" ::: *.instructions
+parallel "$py_scripts_dir/process_trace.sh {} \$(basename {} .instructions).packet_relevant_instructions $verif_arg" ::: *.instructions
 
 if [ "$verif_arg" == "verify-dpdk" ]; then
  stub_file=$py_scripts_dir/fn_lists/dpdk_fns.txt
