@@ -18,6 +18,7 @@ for KTEST in $TRACE_DIR/*.ktest; do
     pin -t $SCRIPT_DIR/../trace-instructions/pin-trace.so -- \
         ./executable -- --wan 1 --lan-dev 0 \
                     --expire 10 --starting-port 0 --max-flows 65536 || true
+#         ./executable -- --expire 10 --capacity 100 --config no-file.cfg || true
     mv trace.out $TRACE
   fi
 done
