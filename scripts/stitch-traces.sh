@@ -33,8 +33,8 @@ function stitch_traces {
   fi
 
   join -t, -j1 \
-      <(sort klee-last/stateful-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
-      <(sort klee-last/stateless-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
+      <(sort $TRACES_DIR/stateful-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
+      <(sort $TRACES_DIR/stateless-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
     | sed -e 's/_/,/' \
     | awk -F, '
       {
