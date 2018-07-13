@@ -217,8 +217,8 @@ int main(int argc, char **argv, char **envp) {
   klee::ref<klee::Expr> tx_expr;
   for (auto call : sender_call_path->calls) {
     if (call.function_name == "stub_core_trace_tx") {
-      assert(call.extra_vars.count("mbuf"));
-      tx_expr = call.extra_vars["mbuf"].first;
+      assert(call.extra_vars.count("user_buf_addr"));
+      tx_expr = call.extra_vars["user_buf_addr"].first;
     }
   }
   if (tx_expr.isNull()) {
@@ -228,10 +228,10 @@ int main(int argc, char **argv, char **envp) {
   }
 
   klee::ref<klee::Expr> rx_expr;
-  for (auto call : sender_call_path->calls) {
+  for (auto call : receiver_call_path->calls) {
     if (call.function_name == "stub_core_trace_rx") {
-      assert(call.extra_vars.count("incoming_package"));
-      rx_expr = call.extra_vars["incoming_package"].first;
+      assert(call.extra_vars.count("user_buf_addr"));
+      rx_expr = call.extra_vars["user_buf_addr"].first;
     }
   }
   if (rx_expr.isNull()) {
