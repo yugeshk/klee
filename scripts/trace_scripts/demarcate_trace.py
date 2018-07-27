@@ -44,7 +44,8 @@ def main():
       for text in trace_lines:
        index1 = find_nth(text,"|",1)
        index2 = find_nth(text,"|",2)
-       fn_call_stack = text[index1+1:index2-1]
+       index3 = find_nth(text,"|",3)
+       fn_call_stack = text[index1+1:index2-1]+text[index2+1:index3-1]
        words = fn_call_stack.split()
      
        stateful = 0
