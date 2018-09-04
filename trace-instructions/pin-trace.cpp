@@ -45,6 +45,8 @@ std::vector<std::pair<bool, unsigned long>> addresses;
 std::vector<std::string> calls;
 bool call = false;
 
+bool is_logging = false;
+
 #define MAX_NDEVS 128
 UINT8* mapped_memory_addr[MAX_NDEVS] = {NULL};
 UINT8 num_devices = 0;
@@ -84,7 +86,8 @@ VOID log_read_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEXT *ctxt
           }
       }
     }
-  addresses.push_back(std::make_pair(0, (unsigned long)addr));
+    if (is_logging)
+      addresses.push_back(std::make_pair(0, (unsigned long)addr));
 }
 
 VOID intercept_write_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEXT *ctxt) {
@@ -125,12 +128,14 @@ VOID intercept_write_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEX
 }
 
 VOID log_write_op(VOID *ip, VOID *addr) {
-  addresses.push_back(std::make_pair(1, (unsigned long)addr));
+  if (is_logging)
+    addresses.push_back(std::make_pair(1, (unsigned long)addr));
 }
 
 // This function is called before every instruction is executed
 // and prints the IP
 VOID log_instruction(instruction_data_t *id) {
+  if (!is_logging) return;
   if (call) {
     calls.push_back(id->function);
     call = false;
@@ -151,9 +156,13 @@ VOID log_instruction(instruction_data_t *id) {
   trace << std::endl;
 }
 
-VOID log_call() { call = true; }
+VOID log_call() {
+  if (!is_logging) return;
+  call = true;
+}
 
 VOID log_return() {
+  if (!is_logging) return;
   assert((!calls.empty()) && "Return with no Call.");
   calls.pop_back();
 }
@@ -213,6 +222,22 @@ VOID Instruction(INS ins, VOID *v) {
 #endif //ACTUALLY_TRACING
 }
 
+VOID commence_tracing(CHAR* name, ADDRINT size)
+{
+	is_logging = true;
+}
+
+VOID Image(IMG img, VOID* v)
+{
+	RTN processRtn = RTN_FindByName(img, "ixgbe_recv");
+	if (RTN_Valid(processRtn)) {
+		RTN_Open(processRtn);
+		RTN_InsertCall(processRtn, IPOINT_BEFORE, (AFUNPTR) commence_tracing, IARG_ADDRINT, "ixgbe_recv", IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END);
+		RTN_Close(processRtn);
+	} else {
+		//std::cout << "ERROR: could not find nf_core_process.." << std::endl;
+	}
+}
 // This function is called when the application exits
 VOID Fini(INT32 code, VOID *v) {
   trace << "#eof" << std::endl;
@@ -316,10 +341,12 @@ int main(int argc, char *argv[]) {
   // Register Instruction to be called to instrument instructions
   INS_AddInstrumentFunction(Instruction, 0);
 
+  // Register Image to be called to preprocess images
+  // i.e. scan through the symbols
+  IMG_AddInstrumentFunction(Image, 0);
   // Register imageLoad to be called to preprocess images,
   // i.e. scan through the symbols
   IMG_AddInstrumentFunction(imageLoad, 0);
-
 
   // Register here your exception handler function
   PIN_AddInternalExceptionHandler(ExceptionHandler,NULL);
