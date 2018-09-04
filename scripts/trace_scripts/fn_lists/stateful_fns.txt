@@ -42,3 +42,5 @@ vector_return_half
 vector_set_layout
 vector_reset
 handle_packet_timestamp
+lpm_lookup
+lpm_init
