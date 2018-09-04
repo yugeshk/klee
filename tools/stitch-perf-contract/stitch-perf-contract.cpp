@@ -50,6 +50,7 @@ typedef struct {
   std::vector<call_t> calls;
   std::map<std::string, const klee::Array *> arrays;
   std::map<std::string, klee::ref<klee::Expr>> initial_extra_vars;
+  std::map<std::string, std::string> tags;
 } call_path_t;
 
 std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
@@ -69,7 +70,8 @@ call_path_t *load_call_path(std::string file_name,
     STATE_KQUERY,
     STATE_CALLS,
     STATE_CALLS_MULTILINE,
-    STATE_DONE
+    STATE_CONSTRAINTS,
+    STATE_TAGS,
   } state = STATE_INIT;
 
   std::string kQuery;
@@ -163,7 +165,7 @@ call_path_t *load_call_path(std::string file_name,
 
         assert(exprs.empty() && "Too many expressions in kQuery.");
 
-        state = STATE_DONE;
+        state = STATE_CONSTRAINTS;
       } else {
         size_t delim = line.find(":");
         assert(delim != std::string::npos);
@@ -226,8 +228,19 @@ call_path_t *load_call_path(std::string file_name,
       continue;
     } break;
 
-    case STATE_DONE: {
-      continue;
+    case STATE_CONSTRAINTS : {
+      if (line == ";;-- Tags --") {
+        state = STATE_TAGS;
+      }
+    } break;
+
+    case STATE_TAGS : {
+      auto delim = line.find(" = ");
+      assert(delim != std::string::npos && "Invalid Tag.");
+      std::string name = line.substr(0, delim);
+      std::string value = line.substr(delim + sizeof(" = ") - 1);
+
+      call_path->tags[name] = value;
     } break;
 
     default: { assert(false && "Invalid call path file."); } break;

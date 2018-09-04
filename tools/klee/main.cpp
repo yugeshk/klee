@@ -24,6 +24,7 @@
 #include "klee/Statistics.h"
 #include "klee/ExprBuilder.h"
 #include "klee/util/ExprPPrinter.h"
+#include "../lib/Core/Memory.h"
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Type.h"
@@ -994,6 +995,48 @@ void KleeHandler::dumpCallPath(const ExecutionState &state, llvm::raw_ostream *f
   for (ConstraintManager::constraint_iterator ci = state.constraints.begin(),
          cEnd = state.constraints.end(); ci != cEnd; ++ci) {
     *file <<**ci<<"\n";
+  }
+
+  *file <<";;-- Tags --\n";
+  for (auto it : state.symbolics) {
+    if (it.second->name.compare(0, sizeof("vigor_tag_") - 1, "vigor_tag_") == 0) {
+      const klee::ObjectState *addrOS = state.addressSpace.findObject(it.first);
+      assert(addrOS && "Tag not set.");
+
+      klee::ref<klee::Expr> addrExpr =
+          addrOS->read(0, klee::Context::get().getPointerWidth());
+      assert(isa<klee::ConstantExpr>(addrExpr) && "Tag address is symbolic.");
+      klee::ref<klee::ConstantExpr> address =
+          cast<klee::ConstantExpr>(addrExpr);
+      klee::ObjectPair op;
+      assert(state.addressSpace.resolveOne(address, op) &&
+             "Tag address is not uniquely defined.");
+      const klee::MemoryObject *mo = op.first;
+      const klee::ObjectState *os = op.second;
+
+      char *buf = new char[mo->size];
+      unsigned ioffset = 0;
+      klee::ref<klee::Expr> offset_expr =
+          klee::SubExpr::create(address, op.first->getBaseExpr());
+      assert(isa<klee::ConstantExpr>(offset_expr) &&
+             "Tag is an invalid string.");
+      klee::ref<klee::ConstantExpr> value =
+          cast<klee::ConstantExpr>(offset_expr.get());
+      ioffset = value.get()->getZExtValue();
+      assert(ioffset < mo->size);
+
+      unsigned i;
+      for (i = 0; i < mo->size - ioffset - 1; i++) {
+        klee::ref<klee::Expr> cur = os->read8(i + ioffset);
+        assert(isa<klee::ConstantExpr>(cur) &&
+               "Symbolic character in tag value.");
+        buf[i] = cast<klee::ConstantExpr>(cur)->getZExtValue(8);
+      }
+      buf[i] = 0;
+
+      *file << it.second->name.substr(sizeof("vigor_tag_") - 1) << " = " << buf << "\n";
+      delete buf;
+    }
   }
 }
 
