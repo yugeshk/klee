@@ -3,11 +3,12 @@ import re
 import string 
 import os
 
-trace_path = sys.argv[1]
-stateful_file = sys.argv[2]
-dpdk_file = sys.argv[3]
-time_file = sys.argv[4]
-verification_file = sys.argv[5]
+ip_file = sys.argv[1]
+op_file = sys.argv[2]
+stateful_file = sys.argv[3]
+dpdk_file = sys.argv[4]
+time_file = sys.argv[5]
+verification_file = sys.argv[6]
 
 stateful_fns = {}
 verif_fns = {}
@@ -33,15 +34,10 @@ def main():
   time_fns = (line.rstrip() for line in time)
   time_fns = list(line for line in time_fns if line)
 
- for root, dirs, files in os.walk(trace_path):
-  for file in files:
-   with open(file) as f:
-    if file.endswith(".packet_relevant_instructions"):
-     trace_lines = (line.rstrip() for line in f)
-     trace_lines = list(line for line in trace_lines if line)
-     dump_file=file.replace('.packet_relevant_instructions','.packet.demarcated')
-     with open(dump_file,"w") as output:
-      for text in trace_lines:
+ with open(ip_file) as f:
+     with open(op_file,"w") as output:
+      for line in f:
+       text=line.rstrip()
        index1 = find_nth(text,"|",1)
        index2 = find_nth(text,"|",2)
        index3 = find_nth(text,"|",3)

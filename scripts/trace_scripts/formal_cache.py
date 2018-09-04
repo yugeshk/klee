@@ -4,7 +4,8 @@ import subprocess
 import string
 import os
 
-trace_path = sys.argv[1]  #Symbolic address trace
+ip_file = sys.argv[1]  #Symbolic address trace
+op_file = sys.argv[2] 
 cache_size=32768
 cache_block_size = 64
 set_associativity = 8
@@ -20,16 +21,10 @@ symbol2_re = re.compile("Non-memory instruction")
 def main():
    global cache_contents
    global cache_ages
-   for root, dirs, files in os.walk(trace_path):
-    for file in files:
-     with open(file) as f:
-      if file.endswith(".stateless_mem_trace"):
-       trace_lines = (line.rstrip() for line in f)
-       trace_lines = list(line for line in trace_lines if line)
-       dump_file=file.replace('.stateless_mem_trace','.stateless_mem_trace.classified')
-
-       with open(dump_file,"w") as output:
-        for text in trace_lines:
+   with open(ip_file) as f:
+       with open(op_file,"w") as output:
+        for line in f:
+	 text = line.rstrip()
          m1=symbol_re.match(text)
          m2=symbol2_re.match(text)
          if(m1):
@@ -59,8 +54,8 @@ def age_cache_contents():
  global cache_ages
  for x in xrange(len(cache_ages)):
   for y in xrange(len(cache_ages[x])):
-   cache_ages[x][y]=set_associativity+1 # Clear cache
-   #cache_ages[x][y] = cache_ages[x][y] # Don't clear cache.
+   #cache_ages[x][y]=set_associativity+1 # Clear cache
+   cache_ages[x][y] = cache_ages[x][y] # Don't clear cache.
 
 def update_ages(block_num,set_num):
  global cache_contents
