@@ -45,6 +45,8 @@ std::vector<std::pair<bool, unsigned long>> addresses;
 std::vector<std::string> calls;
 bool call = false;
 
+bool is_logging = false;
+
 #define MAX_NDEVS 128
 UINT8* mapped_memory_addr[MAX_NDEVS] = {NULL};
 UINT8 num_devices = 0;
@@ -55,36 +57,37 @@ UINT8 (*get_num_devs)() = NULL;
 
 VOID log_read_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEXT *ctxt) {
 #if 0
-    printf("intercepting read %p [%u]\n", addr, size);
-    fflush(stdout);
+printf("intercepting read %p [%u]\n", addr, size);
+fflush(stdout);
 #endif
-    if (0 != stub_hardware_read) {
-      for (int i = 0; i < num_devices; ++i) {
-          if (mapped_memory_addr[i] <= addr &&
-              addr < mapped_memory_addr[i] + (1<<20)) {
-              //printf("interesting read\n");
-              //fflush(stdout);
-            //printf("read addr :%p (%p + %lu)\n", addr, mapped_memory_addr, addr - mapped_memory_addr);
-            //printf("calling %p\n", stub_hardware_read);
+if (0 != stub_hardware_read) {
+  for (int i = 0; i < num_devices; ++i) {
+      if (mapped_memory_addr[i] <= addr &&
+          addr < mapped_memory_addr[i] + (1<<20)) {
+          //printf("interesting read\n");
+          //fflush(stdout);
+        //printf("read addr :%p (%p + %lu)\n", addr, mapped_memory_addr, addr - mapped_memory_addr);
+        //printf("calling %p\n", stub_hardware_read);
 
 
-            CALL_APPLICATION_FUNCTION_PARAM param;
-            memset(&param, 0, sizeof(param));
-            param.native = true;
+        CALL_APPLICATION_FUNCTION_PARAM param;
+        memset(&param, 0, sizeof(param));
+        param.native = true;
 
-            UINT64 value;
+        UINT64 value;
 
-            PIN_CallApplicationFunction(ctxt, tid, CALLINGSTD_DEFAULT, AFUNPTR(stub_hardware_read), &param,
-                                        PIN_PARG(uint64_t), &value,
-                                        PIN_PARG(uint64_t), mapped_memory_addr[i],
-                                        PIN_PARG(unsigned), addr - mapped_memory_addr[i],
-                                        PIN_PARG(unsigned), size, PIN_PARG_END());
+        PIN_CallApplicationFunction(ctxt, tid, CALLINGSTD_DEFAULT, AFUNPTR(stub_hardware_read), &param,
+                                    PIN_PARG(uint64_t), &value,
+                                    PIN_PARG(uint64_t), mapped_memory_addr[i],
+                                    PIN_PARG(unsigned), addr - mapped_memory_addr[i],
+                                    PIN_PARG(unsigned), size, PIN_PARG_END());
 
-            memcpy(addr, &value, size);
-          }
+        memcpy(addr, &value, size);
       }
-    }
-  addresses.push_back(std::make_pair(0, (unsigned long)addr));
+  }
+}
+if (is_logging)
+      addresses.push_back(std::make_pair(0, (unsigned long)addr));
 }
 
 VOID intercept_write_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEXT *ctxt) {
@@ -125,7 +128,8 @@ VOID intercept_write_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEX
 }
 
 VOID log_write_op(VOID *ip, VOID *addr) {
-  addresses.push_back(std::make_pair(1, (unsigned long)addr));
+  if (is_logging)
+    addresses.push_back(std::make_pair(1, (unsigned long)addr));
 }
 
 // This function is called before every instruction is executed
@@ -135,6 +139,7 @@ VOID log_instruction(instruction_data_t *id) {
     calls.push_back(id->function);
     call = false;
   }
+  if (!is_logging) return;
 
   trace << std::hex << std::uppercase << id->ip << " |";
   for (auto c : calls) {
@@ -151,7 +156,9 @@ VOID log_instruction(instruction_data_t *id) {
   trace << std::endl;
 }
 
-VOID log_call() { call = true; }
+VOID log_call() {
+  call = true;
+}
 
 VOID log_return() {
   assert((!calls.empty()) && "Return with no Call.");
@@ -213,6 +220,30 @@ VOID Instruction(INS ins, VOID *v) {
 #endif //ACTUALLY_TRACING
 }
 
+VOID commence_tracing(CHAR* name, ADDRINT size)
+{
+    printf("Start logging.\n");
+    fflush(stdout);
+    is_logging = true;
+}
+
+VOID Image(IMG img, VOID* v)
+{
+    //for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) ) {
+    //    printf("looking over the symbol: %s\n", SYM_Name(sym).c_str());
+    //}
+	RTN processRtn = RTN_FindByName(img, "ixgbe_recv_pkts");
+	if (RTN_Valid(processRtn)) {
+		RTN_Open(processRtn);
+		RTN_InsertCall(processRtn, IPOINT_BEFORE, (AFUNPTR) commence_tracing, IARG_ADDRINT, "ixgbe_recv_pkts", IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END);
+		RTN_Close(processRtn);
+                //printf("Found ixgbe_recv_pkts in %s.\n", IMG_Name(img).c_str());
+                //fflush(stdout);
+	} else {
+            //printf("Could not find ixgbe_recv_pkts function in %s.\n", IMG_Name(img).c_str());
+            //fflush(stdout);
+	}
+}
 // This function is called when the application exits
 VOID Fini(INT32 code, VOID *v) {
   trace << "#eof" << std::endl;
@@ -316,10 +347,12 @@ int main(int argc, char *argv[]) {
   // Register Instruction to be called to instrument instructions
   INS_AddInstrumentFunction(Instruction, 0);
 
+  // Register Image to be called to preprocess images
+  // i.e. scan through the symbols
+  IMG_AddInstrumentFunction(Image, 0);
   // Register imageLoad to be called to preprocess images,
   // i.e. scan through the symbols
   IMG_AddInstrumentFunction(imageLoad, 0);
-
 
   // Register here your exception handler function
   PIN_AddInternalExceptionHandler(ExceptionHandler,NULL);

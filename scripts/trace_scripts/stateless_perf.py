@@ -10,7 +10,7 @@ trace_nos = sys.argv[4]
 perf_out = sys.argv[5]
 
 
-dram_latency = 200
+dram_latency = 30
 l1_latency = 2
 cpi = 1 
 

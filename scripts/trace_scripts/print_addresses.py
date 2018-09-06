@@ -3,20 +3,15 @@ import re
 import string
 import os
 
-trace_path = sys.argv[1]
+ip_file = sys.argv[1]
+op_file = sys.argv[2]
 
 def main():
- for root, dirs, files in os.walk(trace_path):
-  for file in files:
-   with open(file) as f:
-    if file.endswith(".demarcated"):
-     trace_lines = (line.rstrip() for line in f)
-     trace_lines = list(line for line in trace_lines if line)
-     dump_file=file.replace('.demarcated','.stateless_mem_trace')
-     
-     with open(dump_file,"w") as output:
+   with open(ip_file) as f:
+     with open(op_file,"w") as output:
       irrelevant=0
-      for text in trace_lines:
+      for line in f:
+       text = line.rstrip()
        if(text.startswith("Call")):
         output.write("Irrelevant to Trace\n")
        else:

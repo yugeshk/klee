@@ -15,14 +15,14 @@ def main():
   for root, dirs, files in os.walk(trace_path):
    for file in files:
     with open(file) as f:
-     if file.endswith(".classified"):
-      trace_output.write(file+"\n")
-      trace_lines = (line.rstrip() for line in f)
-      trace_lines = list(line for line in trace_lines if line)
+     if file.endswith(".packet.classified_mem_trace"):
+      file_name = file.replace('.packet.classified_mem_trace','')
+      trace_output.write(file_name+"\n")
       insns = 0
       num_accesses = 0
       hits = 0
-      for text in trace_lines:
+      for line in f:
+       text = line.rstrip()
        if(not(text=="Irrelevant to Trace")):
         if(text=="Non-memory instruction"):
          insns = insns + 1
