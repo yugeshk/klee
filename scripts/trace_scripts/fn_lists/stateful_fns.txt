@@ -34,6 +34,8 @@ dmap_set_entry_condition
 dmap_reset
 dmap_increase_occupancy
 dmap_decrease_occupancy
+dmap_lowerbound_on_occupancy
+dmap_occupancy_p
 vector_allocate
 vector_borrow_full
 vector_borrow_half
