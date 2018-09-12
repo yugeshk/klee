@@ -84,6 +84,10 @@ call_path_t *load_call_path(std::string file_name,
     std::string line;
     std::getline(call_path_file, line);
 
+    if (line.empty()) {
+      continue;
+    }
+
     switch (state) {
     case STATE_INIT: {
       if (line == ";;-- kQuery --") {
