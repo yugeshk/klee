@@ -2,7 +2,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-py_scripts_dir=$SCRIPT_DIR/trace_scripts
+py_scripts_dir=$SCRIPT_DIR/stateless_scripts
 traces_dr=${1:-klee-last} #traces_dir needs to contain files with the name *.packet_relevant_instructions 
 output=${2:-stateless-perf.txt}
 verif_arg=${3:-verify-dpdk}

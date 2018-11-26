@@ -1,0 +1,105 @@
+401310 | _start __libc_start_main main | map_put | push r12 | w7FFC6012FD40
+401312 | _start __libc_start_main main | map_put | push rbp | w7FFC6012FD38
+401313 | _start __libc_start_main main | map_put | mov r12d, edx |
+401316 | _start __libc_start_main main | map_put | push rbx | w7FFC6012FD30
+401317 | _start __libc_start_main main | map_put | mov rbx, rdi |
+40131A | _start __libc_start_main main | map_put | mov rbp, rsi |
+40131D | _start __libc_start_main main | map_put | mov rdi, rsi |
+401320 | _start __libc_start_main main map_put | map_put | call qword ptr [rbx+0x38] | r1AAF048 w7FFC6012FD28
+400790 | _start __libc_start_main main map_put | int_key_hash | movzx eax, word ptr [rdi] | r1AAF060
+400793 | _start __libc_start_main main map_put | int_key_hash | mov rdx, rax |
+400796 | _start __libc_start_main main map_put | int_key_hash | shl rdx, 0x5 |
+40079A | _start __libc_start_main main map_put | int_key_hash | sub rdx, rax |
+40079D | _start __libc_start_main main map_put | int_key_hash | movzx eax, word ptr [rdi+0x2] | r1AAF062
+4007A1 | _start __libc_start_main main map_put | int_key_hash | add rdx, rax |
+4007A4 | _start __libc_start_main main map_put | int_key_hash | mov rax, rdx |
+4007A7 | _start __libc_start_main main map_put | int_key_hash | shl rax, 0x5 |
+4007AB | _start __libc_start_main main map_put | int_key_hash | sub rax, rdx |
+4007AE | _start __libc_start_main main map_put | int_key_hash | mov edx, dword ptr [rdi+0x4] | r1AAF064
+4007B1 | _start __libc_start_main main map_put | int_key_hash | add rax, rdx |
+4007B4 | _start __libc_start_main main map_put | int_key_hash | mov rdx, rax |
+4007B7 | _start __libc_start_main main map_put | int_key_hash | shl rdx, 0x5 |
+4007BB | _start __libc_start_main main map_put | int_key_hash | sub rdx, rax |
+4007BE | _start __libc_start_main main map_put | int_key_hash | mov eax, dword ptr [rdi+0x8] | r1AAF068
+4007C1 | _start __libc_start_main main map_put | int_key_hash | add rdx, rax |
+4007C4 | _start __libc_start_main main map_put | int_key_hash | mov rax, rdx |
+4007C7 | _start __libc_start_main main map_put | int_key_hash | shl rax, 0x5 |
+4007CB | _start __libc_start_main main map_put | int_key_hash | sub rax, rdx |
+4007CE | _start __libc_start_main main map_put | int_key_hash | movzx edx, word ptr [rdi+0xc] | r1AAF06C
+4007D2 | _start __libc_start_main main map_put | int_key_hash | add rax, rdx |
+4007D5 | _start __libc_start_main main map_put | int_key_hash | mov rdx, 0x8000000100000003 |
+4007DF | _start __libc_start_main main map_put | int_key_hash | mov rcx, rax |
+4007E2 | _start __libc_start_main main map_put | int_key_hash | shl rcx, 0x5 |
+4007E6 | _start __libc_start_main main map_put | int_key_hash | sub rcx, rax |
+4007E9 | _start __libc_start_main main map_put | int_key_hash | movzx eax, byte ptr [rdi+0xe] | r1AAF06E
+4007ED | _start __libc_start_main main map_put | int_key_hash | add rcx, rax |
+4007F0 | _start __libc_start_main main map_put | int_key_hash | mov rax, rcx |
+4007F3 | _start __libc_start_main main map_put | int_key_hash | imul rdx |
+4007F6 | _start __libc_start_main main map_put | int_key_hash | mov rax, rcx |
+4007F9 | _start __libc_start_main main map_put | int_key_hash | sar rax, 0x3f |
+4007FD | _start __libc_start_main main map_put | int_key_hash | add rdx, rcx |
+400800 | _start __libc_start_main main map_put | int_key_hash | sar rdx, 0x1e |
+400804 | _start __libc_start_main main map_put | int_key_hash | sub rdx, rax |
+400807 | _start __libc_start_main main map_put | int_key_hash | mov rax, rdx |
+40080A | _start __libc_start_main main map_put | int_key_hash | shl rax, 0x1f |
+40080E | _start __libc_start_main main map_put | int_key_hash | sub rax, rdx |
+400811 | _start __libc_start_main main map_put | int_key_hash | sub rcx, rax |
+400814 | _start __libc_start_main main map_put | int_key_hash | mov rax, rcx |
+400817 | _start __libc_start_main main | int_key_hash | ret  | r7FFC6012FD28
+401323 | _start __libc_start_main main | map_put | mov edi, dword ptr [rbx+0x28] | r1AAF038
+401326 | _start __libc_start_main main | map_put | sub rsp, 0x8 |
+40132A | _start __libc_start_main main | map_put | mov rcx, qword ptr [rbx+0x18] | r1AAF028
+40132E | _start __libc_start_main main | map_put | mov rdx, qword ptr [rbx+0x10] | r1AAF020
+401332 | _start __libc_start_main main | map_put | mov rsi, qword ptr [rbx+0x8] | r1AAF018
+401336 | _start __libc_start_main main | map_put | mov r9, rbp |
+401339 | _start __libc_start_main main | map_put | mov r8, qword ptr [rbx+0x20] | r1AAF030
+40133D | _start __libc_start_main main | map_put | push rdi | w7FFC6012FD20
+40133E | _start __libc_start_main main | map_put | mov rdi, qword ptr [rbx] | r1AAF010
+401341 | _start __libc_start_main main | map_put | push r12 | w7FFC6012FD18
+401343 | _start __libc_start_main main | map_put | push rax | w7FFC6012FD10
+401344 | _start __libc_start_main main map_put | map_put | call 0x401c60 | w7FFC6012FD08
+401C60 | _start __libc_start_main main map_put | map_impl_put | push r14 | w7FFC6012FD00
+401C62 | _start __libc_start_main main map_put | map_impl_put | push r13 | w7FFC6012FCF8
+401C64 | _start __libc_start_main main map_put | map_impl_put | push r12 | w7FFC6012FCF0
+401C66 | _start __libc_start_main main map_put | map_impl_put | push rbp | w7FFC6012FCE8
+401C67 | _start __libc_start_main main map_put | map_impl_put | push rbx | w7FFC6012FCE0
+401C68 | _start __libc_start_main main map_put | map_impl_put | mov r12d, dword ptr [rsp+0x40] | r7FFC6012FD20
+401C6D | _start __libc_start_main main map_put | map_impl_put | mov ebp, dword ptr [rsp+0x30] | r7FFC6012FD10
+401C71 | _start __libc_start_main main map_put | map_impl_put | lea r11d, ptr [r12-0x1] |
+401C76 | _start __libc_start_main main map_put | map_impl_put | mov ebx, ebp |
+401C78 | _start __libc_start_main main map_put | map_impl_put | and ebx, r11d |
+401C7B | _start __libc_start_main main map_put | map_impl_put | add ebx, r12d |
+401C7E | _start __libc_start_main main map_put | map_impl_put | and ebx, r11d |
+401C81 | _start __libc_start_main main map_put | map_impl_put | test r12d, r12d |
+401C84 | _start __libc_start_main main map_put | map_impl_put | jle 0x401cde |
+401C86 | _start __libc_start_main main map_put | map_impl_put | mov eax, r11d |
+401C89 | _start __libc_start_main main map_put | map_impl_put | lea r10d, ptr [rbx+0x1] |
+401C8D | _start __libc_start_main main map_put | map_impl_put | and eax, ebx |
+401C8F | _start __libc_start_main main map_put | map_impl_put | add ebx, r12d |
+401C92 | _start __libc_start_main main map_put | map_impl_put | add eax, r12d |
+401C95 | _start __libc_start_main main map_put | map_impl_put | and eax, r11d |
+401C98 | _start __libc_start_main main map_put | map_impl_put | cdqe  |
+401C9A | _start __libc_start_main main map_put | map_impl_put | lea r13, ptr [rax*4] |
+401CA2 | _start __libc_start_main main map_put | map_impl_put | lea r14, ptr [rdi+r13*1] |
+401CA6 | _start __libc_start_main main map_put | map_impl_put | cmp dword ptr [r14], 0x0 | r7FC83610A190
+401CAA | _start __libc_start_main main map_put | map_impl_put | jnz 0x401cd4 |
+401CAC | _start __libc_start_main main map_put | map_impl_put | jmp 0x401d10 |
+401D10 | _start __libc_start_main main map_put | map_impl_put | shl rax, 0x3 |
+401D14 | _start __libc_start_main main map_put | map_impl_put | jmp 0x401cf0 |
+401CF0 | _start __libc_start_main main map_put | map_impl_put | mov dword ptr [r14], 0x1 | w7FC83610A190
+401CF7 | _start __libc_start_main main map_put | map_impl_put | mov qword ptr [rsi+rax*1], r9 | w7FC836059310
+401CFB | _start __libc_start_main main map_put | map_impl_put | mov eax, dword ptr [rsp+0x38] | r7FFC6012FD18
+401CFF | _start __libc_start_main main map_put | map_impl_put | mov dword ptr [rdx+r13*1], ebp | w7FC8360C5190
+401D03 | _start __libc_start_main main map_put | map_impl_put | pop rbx | r7FFC6012FCE0
+401D04 | _start __libc_start_main main map_put | map_impl_put | pop rbp | r7FFC6012FCE8
+401D05 | _start __libc_start_main main map_put | map_impl_put | mov dword ptr [r8+r13*1], eax | w7FC835DE3190
+401D09 | _start __libc_start_main main map_put | map_impl_put | pop r12 | r7FFC6012FCF0
+401D0B | _start __libc_start_main main map_put | map_impl_put | pop r13 | r7FFC6012FCF8
+401D0D | _start __libc_start_main main map_put | map_impl_put | pop r14 | r7FFC6012FD00
+401D0F | _start __libc_start_main main | map_impl_put | ret  | r7FFC6012FD08
+401349 | _start __libc_start_main main | map_put | add rsp, 0x20 |
+40134D | _start __libc_start_main main | map_put | add dword ptr [rbx+0x2c], 0x1 | r1AAF03C w1AAF03C
+401351 | _start __libc_start_main main | map_put | pop rbx | r7FFC6012FD30
+401352 | _start __libc_start_main main | map_put | pop rbp | r7FFC6012FD38
+401353 | _start __libc_start_main main | map_put | pop r12 | r7FFC6012FD40
+401355 | _start __libc_start_main | map_put | ret  | r7FFC6012FD48 
