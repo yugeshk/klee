@@ -18,16 +18,17 @@ function stitch_traces {
 
     USER_VAR_STR="$(echo "$USER_VAR_STR" | sed -e 's/^,//')"
 
-    parallel "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
+    rm $TRACES_DIR/stateful_error_log
+    parallel -j$(nproc) "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
                   --user-vars \"$USER_VAR_STR\" \
-                  {} 2>/dev/null \
+                  {} 2>> $TRACES_DIR/stateful_error_log \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   else
-    parallel "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
+    parallel -j$(nproc) "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
-                  {} 2>/dev/null \
+                  {} 2>> $TRACES_DIR/stateful_error_log \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   fi
