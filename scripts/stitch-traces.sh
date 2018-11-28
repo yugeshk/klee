@@ -19,14 +19,14 @@ function stitch_traces {
     USER_VAR_STR="$(echo "$USER_VAR_STR" | sed -e 's/^,//')"
 
     parallel "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
-                  -contract $SCRIPT_DIR/../../vnds/perf-contracts/perf-contracts.so \
+                  -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
                   --user-vars \"$USER_VAR_STR\" \
                   {} 2>/dev/null \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   else
     parallel "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
-                  -contract $SCRIPT_DIR/../../vnds/perf-contracts/perf-contracts.so \
+                  -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
                   {} 2>/dev/null \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
