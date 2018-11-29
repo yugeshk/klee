@@ -27,9 +27,14 @@ echo Generating address traces
 
 parallel "python $py_scripts_dir/print_addresses.py {} \$(basename {} .packet.demarcated).packet.unclassified_mem_trace" ::: *.packet.demarcated
 
+echo Generating common set of adddresses 
+
+parallel "python $py_scripts_dir/cache_setup.py {} \$(basename {} .packet.unclassified_mem_trace).packet.cache_remnants" ::: *.packet.unclassified_mem_trace
+python $py_scripts_dir/intersection_set.py $traces_dr common_stateless_cache_remnants 
+
 echo Classifiying address traces 
 
-parallel "python $py_scripts_dir/formal_cache.py {} \$(basename {} .packet.unclassified_mem_trace).packet.classified_mem_trace" ::: *.packet.unclassified_mem_trace
+parallel "python $py_scripts_dir/formal_cache.py {} \$(basename {} .packet.unclassified_mem_trace).packet.classified_mem_trace common_stateless_cache_remnants" ::: *.packet.unclassified_mem_trace
 
 echo Putting it together 
 python $py_scripts_dir/stateless_stats.py ./ comp_insns num_accesses num_hits num_misses trace_nos

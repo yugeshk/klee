@@ -6,7 +6,6 @@ import os
 
 ip_file = sys.argv[1]  #Symbolic address trace
 op_file = sys.argv[2]  #Classified address trace
-common_file = sys.argv[3] #File with common cache contents 
 cache_size=32768
 cache_block_size = 64
 set_associativity = 8
@@ -22,40 +21,24 @@ symbol2_re = re.compile("Non-memory instruction")
 def main():
    global cache_contents
    global cache_ages
-   common_lines = []
-   with open(common_file) as common:
-       for block in common: 
-        block = block.strip() 
-        common_lines.append(int(block,16))   #In this scope we treat all block numbers as integers 
    with open(ip_file) as f:
-       with open(op_file,"w") as output:
-        for line in f:
+        
+	for line in f:
 	 text = line.rstrip()
          m1=symbol_re.match(text)
          m2=symbol2_re.match(text)
          if(m1):
           age_cache_contents()
-          output.write(text+"\n")
-         elif(m2):
-          output.write(text+"\n")
-         else:
+         elif(not m2):
           addr=int(text,16)
           block_no=addr/cache_block_size
           set_no=block_no % num_sets
- 	  if block_no not in cache_contents[set_no] and block_no in common_lines:
-           cache_contents[set_no].append(block_no)
-           cache_ages[set_no].append(None)
-	   output.write("Hit\n")
-          elif (block_no in cache_contents[set_no]):
-           index=cache_contents[set_no].index(block_no)
-           if cache_ages[set_no][index] < set_associativity:
-            output.write("Hit\n")
-          else:
+ 	  if block_no not in cache_contents[set_no]:
            cache_contents[set_no].append(block_no)
  	   cache_ages[set_no].append(None)
-           output.write("Miss\n")
           update_ages(block_no,set_no)
    
+   print_cache_contents(op_file)
       
    
 def age_cache_contents():
@@ -77,7 +60,13 @@ def update_ages(block_num,set_num):
   elif(not(x==index) and cache_ages[set_num][x]<=age):
    cache_ages[set_num][x] += 1 
 
-
-if __name__ == "__main__":
-    main()
-
+def print_cache_contents(op_file):
+ global cache_contents
+ global cache_ages
+ with open(op_file,"w") as output:
+    for x in xrange(len(cache_ages)):
+      for y in xrange(len(cache_ages[x])):
+        if(cache_ages[x][y] < set_associativity):
+          output.write(str(hex(cache_contents[x][y]))+"\n")
+  
+main()
