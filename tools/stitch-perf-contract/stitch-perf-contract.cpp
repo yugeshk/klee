@@ -288,6 +288,7 @@ process_candidate(call_path_t *call_path, void *contract,
 
     assert(call_path->arrays.count(initial_name));
     const klee::Array *array = call_path->arrays[initial_name];
+    assert(array && "Initial variable not found");
     klee::UpdateList ul(array, 0);
     klee::ref<klee::Expr> read_expr =
         exprBuilder->Read(ul, exprBuilder->Constant(0, klee::Expr::Int32));
