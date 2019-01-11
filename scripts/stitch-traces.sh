@@ -18,20 +18,23 @@ function stitch_traces {
 
     USER_VAR_STR="$(echo "$USER_VAR_STR" | sed -e 's/^,//')"
 
+   
     rm $TRACES_DIR/stateful_error_log
-    parallel -j$(nproc) "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
+    parallel --joblog joblog.txt -j$(nproc) --halt-on-error 0 "set -euo pipefail; $SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
                   --user-vars \"$USER_VAR_STR\" \
                   {} 2>> $TRACES_DIR/stateful_error_log \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   else
-    parallel -j$(nproc) "$SCRIPT_DIR/../build/bin/stitch-perf-contract \
+    parallel --joblog joblog.txt -j$(nproc) --halt-on-error 0 "set -euo pipefail; $SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
                   {} 2>> $TRACES_DIR/stateful_error_log \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
   fi
+
+  #sed -i '1d' joblog.txt && cat joblog.txt | awk '{print $7}' | sort -nr | uniq -c  
 
   join -t, -j1 \
       <(sort $TRACES_DIR/stateful-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
