@@ -8,9 +8,6 @@ shift 2 || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Generating instruction traces."
-$SCRIPT_DIR/trace-instruction.sh $TRACES_DIR
-
 echo "Computing stateless bounds."
 $SCRIPT_DIR/stateless_perf.sh $TRACES_DIR stateless-perf.txt $verif_arg
 
