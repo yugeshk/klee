@@ -32,6 +32,9 @@ END_LEGAL */
 #include <fstream>
 #include <string>
 #include <iostream>
+#include <map>
+#include <iterator>
+#include <vector>
 
 std::ofstream trace;
 
@@ -39,10 +42,17 @@ typedef struct {
   unsigned long ip;
   std::string function;
   std::string assembly;
+  std::string category;
+  std::map<LEVEL_BASE::REG,int> written_regs;
 } instruction_data_t;
 
 std::vector<std::pair<bool, unsigned long>> addresses;
 std::vector<std::string> calls;
+std::map<LEVEL_BASE::REG,std::string> regs;
+
+std::string initial_function = "nf_core_process"; /*Verify DPDK*/
+//std::string initial_function = "ixgbe_recv_pkts"; /*Verify Hardware*/
+
 bool call = false;
 
 bool is_logging = false;
@@ -134,13 +144,29 @@ VOID log_write_op(VOID *ip, VOID *addr) {
 
 // This function is called before every instruction is executed
 // and prints the IP
-VOID log_instruction(instruction_data_t *id) {
+VOID log_instruction(CONTEXT* ctx,instruction_data_t *id) {
   if (call) {
     calls.push_back(id->function);
     call = false;
   }
   if (!is_logging) return;
 
+  /* Printing values of all registers before the instruction was executed */
+  for(std::map<LEVEL_BASE::REG,std::string>::iterator i = regs.begin(); i!= regs.end(); ++i) { 
+  
+	  trace << i->second << " ("<<i->first<<")"<< " = " << PIN_GetContextReg(ctx, i->first) << std::endl ;
+	  
+  }
+  
+  trace << "Number of Written Registers = " << id->written_regs.size() << std::endl;
+  for(std::map<LEVEL_BASE::REG,int>::iterator i = id->written_regs.begin(); i!= id->written_regs.end(); ++i) { 
+		  
+	  if(regs.count(i->first)) {
+		  trace<<"Write to " << regs[i->first] << std::endl;
+          }
+	  else if(!(LEVEL_BASE::REG_is_flags(i->first))) trace<< "Register not found " << i->first << std::endl; 
+  }
+ 
   trace << std::hex << std::uppercase << id->ip << " |";
   for (auto c : calls) {
     trace << " " << c;
@@ -172,6 +198,14 @@ VOID Instruction(INS ins, VOID *v) {
   id->ip = INS_Address(ins);
   id->function = RTN_FindNameByAddress(id->ip);
   id->assembly = INS_Disassemble(ins);
+  
+  /* We don't print this anymore */
+  id->category = CATEGORY_StringShort(INS_Category(ins));
+
+  /* Getting written registers */
+  for (unsigned int i = 1; i <= INS_MaxNumWRegs(ins); ++i) {
+	id->written_regs[LEVEL_BASE::REG_FullRegName(INS_RegW(ins,i))] = 1;
+  }
 
   // Instruments memory accesses using a predicated call, i.e.
   // the instrumentation is called iff the instruction will actually be
@@ -209,7 +243,7 @@ VOID Instruction(INS ins, VOID *v) {
 #define ACTUALLY_TRACING 1
 #if ACTUALLY_TRACING
 
-  INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)log_instruction, IARG_PTR, id,
+  INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)log_instruction, IARG_CONTEXT, IARG_PTR, id,
                  IARG_END);
   
   if (INS_IsRet(ins)) {
@@ -225,6 +259,25 @@ VOID commence_tracing(CHAR* name, ADDRINT size)
     printf("Start logging.\n");
     fflush(stdout);
     is_logging = true;
+
+    /*Instantiating registers map */ 
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RAX)]="rax";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RBX)]="rbx";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RDI)]="rdi";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RSI)]="rsi";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RDX)]="rdx";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RCX)]="rcx";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RBP)]="rbp";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RSP)]="rsp";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R8)]="r8";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R9)]="r9";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R10)]="r10";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R11)]="r11";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R12)]="r12";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R13)]="r13";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R14)]="r14";
+    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R15)]="r15";
+
 }
 
 VOID Image(IMG img, VOID* v)
@@ -232,15 +285,15 @@ VOID Image(IMG img, VOID* v)
     //for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) ) {
     //    printf("looking over the symbol: %s\n", SYM_Name(sym).c_str());
     //}
-	RTN processRtn = RTN_FindByName(img, "ixgbe_recv_pkts");
+	RTN processRtn = RTN_FindByName(img, initial_function.c_str());
 	if (RTN_Valid(processRtn)) {
 		RTN_Open(processRtn);
-		RTN_InsertCall(processRtn, IPOINT_BEFORE, (AFUNPTR) commence_tracing, IARG_ADDRINT, "ixgbe_recv_pkts", IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END);
+		RTN_InsertCall(processRtn, IPOINT_BEFORE, (AFUNPTR) commence_tracing, IARG_ADDRINT, initial_function.c_str(), IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END);
 		RTN_Close(processRtn);
-                //printf("Found ixgbe_recv_pkts in %s.\n", IMG_Name(img).c_str());
+                //printf("Found %s in %s.\n", initial_function.c_str(), IMG_Name(img).c_str());
                 //fflush(stdout);
 	} else {
-            //printf("Could not find ixgbe_recv_pkts function in %s.\n", IMG_Name(img).c_str());
+            //printf("Could not find %s function in %s.\n", initial_function.c_str(),IMG_Name(img).c_str());
             //fflush(stdout);
 	}
 }
