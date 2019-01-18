@@ -12,7 +12,7 @@ echo "Computing stateful bounds."
 $SCRIPT_DIR/stitch-traces.sh $TRACES_DIR $@
 
 echo "Computing stateless bounds."
-#$SCRIPT_DIR/stateless_perf.sh $TRACES_DIR stateless-perf.txt $verif_arg
+$SCRIPT_DIR/stateless_perf.sh $TRACES_DIR stateless-perf.txt $verif_arg
 
 echo "Final touches"
 $SCRIPT_DIR/combine.sh $TRACES_DIR
