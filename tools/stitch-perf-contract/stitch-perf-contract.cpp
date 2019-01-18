@@ -428,7 +428,7 @@ process_candidate(call_path_t *call_path, void *contract,
      
         if(!concrete_state_touched.empty()) {
 	  for (auto cstate_it : concrete_state_touched) {
-		  std::cout<<cit.function_name<<":" << cstate_it.first <<":"; 
+		  std::cout<<"Concrete State:"<<cit.function_name<<":" << cstate_it.first <<":"; 
 		  for(auto it : cstate_it.second) {
 			  std::cout<<it<<",";
 	          }
