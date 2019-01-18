@@ -101,4 +101,18 @@ std::string contract_get_subcontract_constraints(std::string function_name,
 long contract_get_sub_contract_performance(
     std::string function_name, int sub_contract_idx, std::string metric,
     std::map<std::string, long> variables);
+
+/**
+* Returns concrete state for the given subcontract.
+*
+* @param function_name The name of the contract function.
+* @param sub_contract_idx The sub contract index.
+* @param variables The assignment for all user-defined and optimization
+* variables.
+* @returns The concrete state touched by the function.
+*/
+
+std::map<std::string, std::set<int>> contract_get_concrete_state(std::string function_name, 
+	        int sub_contract_idx, std::map<std::string, long> variables);
+
 }

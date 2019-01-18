@@ -256,12 +256,13 @@ call_path_t *load_call_path(std::string file_name,
 
 std::map<std::string, long>
 process_candidate(call_path_t *call_path, void *contract,
-                  std::map<std::string, klee::ref<klee::Expr>> vars) {
+                  std::map<std::string, klee::ref<klee::Expr>> vars) { 
   LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_has_contract);
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
   LOAD_SYMBOL(contract, contract_get_subcontract_constraints);
   LOAD_SYMBOL(contract, contract_get_sub_contract_performance);
+  LOAD_SYMBOL(contract, contract_get_concrete_state);
 
 #ifdef DEBUG
   std::cerr << std::endl;
@@ -421,6 +422,19 @@ process_candidate(call_path_t *call_path, void *contract,
           assert(performance >= 0);
           total_performance[metric] += performance;
         }
+
+	std::map<std::string, std::set<int>> concrete_state_touched = contract_get_concrete_state(
+		       cit.function_name, sub_contract_idx,variables);	
+     
+        if(!concrete_state_touched.empty()) {
+	  for (auto cstate_it : concrete_state_touched) {
+		  std::cout<<cit.function_name<<":" << cstate_it.first <<":"; 
+		  for(auto it : cstate_it.second) {
+			  std::cout<<it<<",";
+	          }
+		  std::cout<< std::endl;  
+	  }
+        }	  
       }
     }
     if (!found_subcontract) {
@@ -576,7 +590,7 @@ int main(int argc, char **argv, char **envp) {
     std::cerr << std::endl;
   }
 #endif
-
+  
   std::map<std::string, long> max_performance;
   std::map<std::string, std::set<klee::ref<klee::Expr>>::iterator>::iterator
       pos;
@@ -587,6 +601,7 @@ int main(int argc, char **argv, char **envp) {
       vars[it.first] = *it.second;
     }
 
+    
     std::map<std::string, long> performance =
         process_candidate(call_path, contract, vars);
     for (auto metric : performance) {
