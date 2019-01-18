@@ -19,40 +19,26 @@ function stitch_traces {
     USER_VAR_STR="$(echo "$USER_VAR_STR" | sed -e 's/^,//')"
 
    
-    rm $TRACES_DIR/stateful_error_log
+    rm $TRACES_DIR/stateful-error-log
     parallel --joblog joblog.txt -j$(nproc) --halt-on-error 0 "set -euo pipefail; $SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
                   --user-vars \"$USER_VAR_STR\" \
-                  {} 2>> $TRACES_DIR/stateful_error_log \
+                  {} 2>> $TRACES_DIR/stateful-error-log \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
-                ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
+                ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-analysis-log.txt
   else
     parallel --joblog joblog.txt -j$(nproc) --halt-on-error 0 "set -euo pipefail; $SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
-                  {} 2>> $TRACES_DIR/stateful_error_log \
+                  {} 2>> $TRACES_DIR/stateful-error-log \
                 | awk \"{ print \\\"\$(basename {} .call_path),\\\" \\\$0; }\"" \
-                ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-perf.txt
+                ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-analysis-log.txt
   fi
+  
+  grep "Concrete State" stateful-analysis-log.txt > concrete-state-log.txt
+  grep -v "Concrete State" stateful-analysis-log.txt > stateful-perf.txt
 
   #sed -i '1d' joblog.txt && cat joblog.txt | awk '{print $7}' | sort -nr | uniq -c  
 
-  join -t, -j1 \
-      <(sort $TRACES_DIR/stateful-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
-      <(sort $TRACES_DIR/stateless-perf.txt | awk -F, '{print $1 "_" $2 "," $3}') \
-    | sed -e 's/_/,/' \
-    | awk -F, '
-      {
-        performance = ($3 + $4);
-        if (performance > max_performance[$2]) {
-          max_performance[$2] = performance;
-        }
-      }
-
-      END {
-        for (metric in max_performance) {
-          print metric "," max_performance[metric];
-        }
-      }'
 }
 
 
@@ -64,21 +50,8 @@ while [ "${1:-}" ]; do
 done
 
 if [ ${#USER_VARS[@]} -gt 0 ]; then
-  BASELINE_PERF=$(stitch_traces "$(declare -p USER_VARS)")
+  stitch_traces "$(declare -p USER_VARS)"
 
-  echo "$BASELINE_PERF"
-
-#   for VAR in "${!USER_VARS[@]}"; do
-#     USER_VARS_STR=$(declare -p USER_VARS)
-#     eval "declare -A USER_VARS_VARIANT="${USER_VARS_STR#*=}
-#     USER_VARS_VARIANT["$VAR"]=$((${USER_VARS[$VAR]} + 1))
-# 
-#     VARIANT_PERF=$(stitch_traces "$(declare -p USER_VARS_VARIANT)")
-#     join -t, -j1 \
-#         <(echo "$BASELINE_PERF") \
-#         <(echo "$VARIANT_PERF") \
-#       | awk -F, "{ print \$1 \",\" (\$3 - \$2) \"/$VAR\"; }"
-#   done
 else
   stitch_traces ""
 fi
