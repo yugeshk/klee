@@ -3,30 +3,96 @@ import re
 import string
 import os
 
-ip_file = sys.argv[1]
-op_file = sys.argv[2]
+from collections import namedtuple
+
+ip_trace = sys.argv[1]
+ip_metadata = sys.argv[2]
+concrete_state_log = sys.argv[3]
+op_file = sys.argv[4]
+duplicated_stats_file = sys.argv[5]
 
 def main():
-   with open(ip_file) as f:
+   
+   rel_cstate={}
+   with open(concrete_state_log) as cstate:
+    #We make assumptions on the name of the file, in particular it will be of the form test######.*
+    filename=ip_trace[0:10]
+    trace_cstate = [line.rstrip() for line in cstate if filename in line]  #This file is small and we can bring it into memory
+    for line in trace_cstate:
+     index1 = find_nth(line,"#",1)
+     index2 = find_nth(line,":",2)
+     call_number = int(line[index1+1:index2])
+     if call_number in rel_cstate:
+      rel_cstate[call_number].append(line)
+     else:
+      rel_cstate[call_number] = [line]
+   
+   duplicated = 0
+
+   # print(sorted(rel_cstate))
+   #print("New trace")
+   with open(ip_trace) as f, open(ip_metadata) as meta_f:
      with open(op_file,"w") as output:
-      irrelevant=0
       for line in f:
+       meta_lines=[]
+       for i in range(17): #Number of metalines
+        meta_lines.append(meta_f.readline())
        text = line.rstrip()
        if(text.startswith("Call")):
-        output.write("Irrelevant to Trace\n")
+	if(text.startswith("Call to libVig model")):
+ 	 #Here we do the magic 
+         index1 = find_nth(text,"-",1)
+	 called_fn_name = text[index1+2:]
+         
+	 if rel_cstate:
+	  called_fn_id = sorted(rel_cstate)[0]
+	  top_cstate_entry = rel_cstate[called_fn_id][0]
+          index2 = find_nth(top_cstate_entry,":",2)
+          index3 = find_nth(top_cstate_entry,":",3)
+          index4 = find_nth(top_cstate_entry,":",4)
+          fn_name = top_cstate_entry[index2+1:index3]
+	  if(fn_name == called_fn_name):
+           #All the setup is done. Now pull in the regs, take the values, generate the cache lines, do this for the rest of the list  and delete the damn entry
+	   for top_cstate_entry in rel_cstate[called_fn_id]:
+	    reg = top_cstate_entry[index3+1:index4]
+	    #print(top_cstate_entry)
+	    #print(reg)
+	    reg_values=[int(value) for value in top_cstate_entry[index4+1:].split()]
+	    meta_lines = [line.rstrip() for line in meta_lines if not "Call to libVig model" in line]
+	    for each_line in meta_lines:
+             index5=find_nth(each_line,"(",1)
+	     meta_reg = each_line[0:index5-1]
+	     if(meta_reg == reg):
+              #print(meta_reg)
+	      #print(meta_lines)
+	      index6 = find_nth(each_line,"=",1)
+	      meta_reg_val = int(each_line[index6+2:],16)
+	      for value in reg_values:
+	       output.write(str(hex(meta_reg_val+value))[2:]+"\n")
+	       duplicated = duplicated + 1
+	      #print(meta_reg_val)
+	      #print(reg_values)
+
+ 	    #Now need to generate the cache line
+
+	   del rel_cstate[called_fn_id]
+
+	else:
+         output.write("Irrelevant to Trace\n")
        else:
         index = find_nth(text,"|",4)
         text = text[index+1:]
         if(text == ""):
          output.write("Non-memory instruction\n")
         words = text.split() 
-        i=0
-        while i < len(words):
-         words[i]=words[i][1:]
-         output.write(words[i])
+        for addr in words:
+         addr=addr[1:]  #Removing 'r' and 'w' tags
+         output.write(addr)
   	 output.write("\n")
-         i+=1
        
+   with open(duplicated_stats_file,"w") as dup_op:
+    dup_op.write(str(duplicated)+"\n")
+    
 
 
 def find_nth(haystack, needle, n):

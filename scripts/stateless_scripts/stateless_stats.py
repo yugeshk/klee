@@ -30,10 +30,15 @@ def main():
          num_accesses+=1
         if(text == "Hit"):
          hits+=1
-     
+      
+      dup_file=file.replace('classified_mem_trace','duplicated')
+      with open(dup_file) as dup_ip:
+	dup = [line.rstrip() for line in dup_ip]
+        dup_accesses = int(dup[0])
       insns_output.write(str(insns) + "\n")
       hit_output.write(str(hits)+"\n")
-      num_output.write(str(num_accesses)+"\n")
       miss_output.write(str(num_accesses-hits)+"\n")
+      num_accesses= num_accesses - dup_accesses
+      num_output.write(str(num_accesses)+"\n")
 
 main()
