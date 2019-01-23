@@ -256,7 +256,7 @@ call_path_t *load_call_path(std::string file_name,
 
 std::map<std::string, long>
 process_candidate(call_path_t *call_path, void *contract,
-                  std::map<std::string, klee::ref<klee::Expr>> vars) { 
+                  std::map<std::string, klee::ref<klee::Expr>> vars, std::map<std::string,std::map<std::string, std::set<int>>> &cstate) { 
   LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_has_contract);
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
@@ -342,6 +342,7 @@ process_candidate(call_path_t *call_path, void *contract,
 #endif
 
   std::map<std::string, long> total_performance;
+  int calls_processed = 0; /*To give the cstate a unique ID*/
   for (auto cit : call_path->calls) {
 #ifdef DEBUG
     std::cerr << "Debug: Processing call to " << cit.function_name << std::endl;
@@ -422,19 +423,12 @@ process_candidate(call_path_t *call_path, void *contract,
           assert(performance >= 0);
           total_performance[metric] += performance;
         }
-
-	std::map<std::string, std::set<int>> concrete_state_touched = contract_get_concrete_state(
+        
+	calls_processed ++;
+	std::string unique_fn_id = "LibVig Call #" + std::to_string(calls_processed) + ":" + cit.function_name;
+	cstate[unique_fn_id] = contract_get_concrete_state(
 		       cit.function_name, sub_contract_idx,variables);	
-     
-        if(!concrete_state_touched.empty()) {
-	  for (auto cstate_it : concrete_state_touched) {
-		  std::cout<<"Concrete State:"<<cit.function_name<<":" << cstate_it.first <<":"; 
-		  for(auto it : cstate_it.second) {
-			  std::cout<<it<<",";
-	          }
-		  std::cout<< std::endl;  
-	  }
-        }	  
+    
       }
     }
     if (!found_subcontract) {
@@ -592,6 +586,7 @@ int main(int argc, char **argv, char **envp) {
 #endif
   
   std::map<std::string, long> max_performance;
+  std::map<std::string,std::map<std::string, std::set<int>>> final_cstate;
   std::map<std::string, std::set<klee::ref<klee::Expr>>::iterator>::iterator
       pos;
   do {
@@ -601,12 +596,13 @@ int main(int argc, char **argv, char **envp) {
       vars[it.first] = *it.second;
     }
 
-    
+    std::map<std::string,std::map<std::string, std::set<int>>> candidate_cstate;
     std::map<std::string, long> performance =
-        process_candidate(call_path, contract, vars);
+        process_candidate(call_path, contract, vars, candidate_cstate);
     for (auto metric : performance) {
       assert(metric.second >= 0);
       if (metric.second > max_performance[metric.first]) {
+	final_cstate=candidate_cstate; /*Assumption that all three metrics increase/decrease together*/
         max_performance[metric.first] = metric.second;
       }
     }
@@ -631,5 +627,18 @@ int main(int argc, char **argv, char **envp) {
   for (auto metric : max_performance) {
     std::cout << metric.first << "," << metric.second << std::endl;
   }
+
+  if(!final_cstate.empty()) {
+	for (auto cstate_it : final_cstate) {
+		for(auto it : cstate_it.second) {
+			std::cout<<"Concrete State:"<<cstate_it.first<<":" << it.first <<":"; 
+			for(auto it1 : it.second) {
+				std::cout<<" " <<it1;
+	        	}
+			std::cout<< std::endl;  
+	        }
+	}
+  }
+
   return 0;
 }
