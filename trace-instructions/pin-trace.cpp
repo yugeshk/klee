@@ -158,7 +158,8 @@ VOID log_instruction(CONTEXT* ctx,instruction_data_t *id) {
 	  
   }
   
-  trace << "Number of Written Registers = " << id->written_regs.size() << std::endl;
+  /* Commenting for now, unecessary for analysis */
+  /*trace << "Number of Written Registers = " << id->written_regs.size() << std::endl;
   for(std::map<LEVEL_BASE::REG,int>::iterator i = id->written_regs.begin(); i!= id->written_regs.end(); ++i) { 
 		  
 	  if(regs.count(i->first)) {
@@ -166,7 +167,8 @@ VOID log_instruction(CONTEXT* ctx,instruction_data_t *id) {
           }
 	  else if(!(LEVEL_BASE::REG_is_flags(i->first))) trace<< "Register not found " << i->first << std::endl; 
   }
- 
+  */
+
   trace << std::hex << std::uppercase << id->ip << " |";
   for (auto c : calls) {
     trace << " " << c;
