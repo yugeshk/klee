@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 function stitch_traces {
   if [ "${1}" ]; then
     eval "declare -A USER_VARS="${1#*=}
-
+    
     USER_VAR_STR=""
     for VAR in "${!USER_VARS[@]}"; do
       USER_VAR_STR="$USER_VAR_STR,$VAR=(w32 ${USER_VARS[$VAR]})"
@@ -18,7 +18,7 @@ function stitch_traces {
 
     USER_VAR_STR="$(echo "$USER_VAR_STR" | sed -e 's/^,//')"
 
-   
+    touch $TRACES_DIR/stateful-error-log   
     rm $TRACES_DIR/stateful-error-log
     parallel --joblog joblog.txt -j$(nproc) --halt-on-error 0 "set -euo pipefail; $SCRIPT_DIR/../build/bin/stitch-perf-contract \
                   -contract $SCRIPT_DIR/../../bolt/perf-contracts/perf-contracts.so \
@@ -34,7 +34,10 @@ function stitch_traces {
                 ::: $TRACES_DIR/*.call_path > $TRACES_DIR/stateful-analysis-log.txt
   fi
   
-  grep "Concrete State" stateful-analysis-log.txt > concrete-state-log.txt
+  if grep -q "Concrete State" stateful-analysis-log.txt; then
+	  grep "Concrete State" stateful-analysis-log.txt > concrete-state-log.txt
+  fi
+  touch concrete-state-log.txt
   grep -v "Concrete State" stateful-analysis-log.txt > stateful-perf.txt
 
   #sed -i '1d' joblog.txt && cat joblog.txt | awk '{print $7}' | sort -nr | uniq -c  

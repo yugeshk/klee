@@ -34,6 +34,7 @@ parallel "python $py_scripts_dir/print_addresses.py {} \$(basename {} .packet.de
 echo Generating common set of adddresses 
 
 parallel "python $py_scripts_dir/cache_setup.py {} \$(basename {} .packet.unclassified_mem_trace).packet.cache_remnants" ::: *.packet.unclassified_mem_trace
+touch relevant_traces
 python $py_scripts_dir/intersection_set.py $traces_dir common_stateless_cache_remnants relevant_traces
 
 echo Classifiying address traces 
