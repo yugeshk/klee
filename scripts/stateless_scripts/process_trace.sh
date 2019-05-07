@@ -1,4 +1,17 @@
 #!/bin/bash
+
+# Script to extract the portions of the executable trace that are relevant to the packet
+# $1: This is the input trace, typically obtained by booting up an executable, running it for a specific packet 
+#     and then killing it. 
+# $2: This is the output trace, which is the subset of the input trace relevant to packet processing by the NF. 
+#     The script looks for boundary functions depending on the type of analysis ($5). 
+#     If only the NF is being analysed (verify-dpdk), the relevant portions are within the nf_core_process function
+#     If we are analysing both the NF and DPDK, the relevant portion starts at the receive call in the driver and ends at the send/drop call at the driver
+# $3: Input metadata file from which relevant metadata must be extracted
+# $4: Output metadata file. The metadata is per instruction, so the process of extraction is same across the pairs $1,$2 and $3,$4
+# $5: The type of analysis. This must be either verify-dpdk or verify-hardware. 
+
+
 inp_trace=$1
 op_trace=$2
 inp_metadata=$3
