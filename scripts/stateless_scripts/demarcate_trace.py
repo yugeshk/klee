@@ -16,7 +16,6 @@
 # $8: List of klee-specific functions that are called during Symbex but are
 #     not part of the runtime NF executable.
 
-
 import sys
 import re
 import string
@@ -40,6 +39,7 @@ symbol2_re = re.compile('_exit@plt*')
 
 
 def main():
+
     with open(stateful_file, "r") as stateful:
         stateful_fns = (line.rstrip() for line in stateful)
         stateful_fns = list(line for line in stateful_fns if line)
@@ -106,8 +106,10 @@ def main():
 
                     if(stateful or dpdk or verif or time):
                         currently_demarcated = 1
-                        if(current_fn_name == " dmap_get_value"):
+                        if(current_fn_name == " dmap_get_value" or current_fn_name == " vector_return_half" or current_fn_name == " vector_return_full"):
                             current_fn_name = " klee_forbid_access"  # Jump instead of call
+                        if(current_fn_name == " flood"):
+                            current_fn_name = "flood"  # Will always fail and exit
                         currently_demarcated_fn = current_fn_name
                         meta_lines = [
                             line for line in meta_lines if not "|" in line]
@@ -136,6 +138,9 @@ def main():
                     else:
                         output.write(text)
                         output.write("\n")
+
+
+>>>>>> > e538243656d008a916e81e4563798e07a73b76fb
 
 
 def find_nth(haystack, needle, n):
