@@ -12,11 +12,12 @@ join -t, -j1 \
         performance = ($3 + $4);
         if (performance > max_performance[$2]) {
           max_performance[$2] = performance;
+          trace[$2] = $1;
         }
       }
 
       END {
         for (metric in max_performance) {
-          print metric "," max_performance[metric];
+          print metric "," max_performance[metric]" -  " trace[metric];
         }
       }'
