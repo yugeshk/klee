@@ -233,7 +233,7 @@ void klee_trace_param_ptr_nested_field_directed(void *ptr, int base_offset,
 void klee_trace_ret_ptr_nested_field(int base_offset, int offset, int width,
                                      char *name);
 void klee_trace_extra_ptr(void *ptr, int width, char *name, char *type,
-                          TracingDirection td);
+                          char *prefix, TracingDirection td);
 void klee_trace_extra_ptr_field(void *ptr, int offset, int width, char *name,
                                 TracingDirection td);
 void klee_trace_extra_ptr_field_just_ptr(void *ptr, int offset, int width,
@@ -257,13 +257,20 @@ void klee_dump_constraints();
 
 void klee_possibly_havoc(void *ptr, int width, char *name);
 
+int traced_variable_type(char *variable, char **type);
+
 #define PERF_MODEL_BRANCH(param, val1, val2)                                   \
   if (param) {                                                                 \
-    param = val1;                                                                 \
+    param = val1;                                                              \
   } else {                                                                     \
-    param = val2;                                                                 \
+    param = val2;                                                              \
     /* Setting it to a different value so compiler doesn't eliminate branch */ \
   }
+
+#define TRACE_VAR(var, name)                                                   \
+  klee_assert(traced_variable_type(name, &prefix) &&                           \
+              "Prefix for Variable not found");                                \
+  klee_trace_extra_ptr(&var, sizeof(var), name, "type", prefix, TD_BOTH);
 
 #ifdef __cplusplus
 }

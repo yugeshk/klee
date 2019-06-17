@@ -126,6 +126,7 @@ struct CallExtraPtr {
   bool accessibleOut;
 
   std::string name;
+  std::string prefix;
 
   bool sameInvocationValue(const CallExtraPtr& other) const;
   bool eq(const CallExtraPtr& other) const;
@@ -383,6 +384,7 @@ public:
   void traceExtraPtr(size_t ptr, Expr::Width width,
                      std::string name,
                      std::string type,
+                     std::string prefix,
                      bool trace_in, bool trace_out);
   void traceExtraPtrField(size_t ptr, int offset,
                           Expr::Width width, std::string name,

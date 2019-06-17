@@ -37,11 +37,12 @@ llvm::cl::opt<std::string> UserVariables(
 llvm::cl::opt<std::string> InputCallPathFile(llvm::cl::desc("<call path>"),
                                              llvm::cl::Positional,
                                              llvm::cl::Required);
-}
+} // namespace
 
 typedef struct {
   std::string function_name;
-  std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
+  std::map<std::string,
+           std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > >
       extra_vars;
 } call_t;
 
@@ -49,17 +50,17 @@ typedef struct {
   klee::ConstraintManager constraints;
   std::vector<call_t> calls;
   std::map<std::string, const klee::Array *> arrays;
-  std::map<std::string, klee::ref<klee::Expr>> initial_extra_vars;
+  std::map<std::string, klee::ref<klee::Expr> > initial_extra_vars;
   std::map<std::string, std::string> tags;
 } call_path_t;
 
-std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
+std::map<std::pair<std::string, int>, klee::ref<klee::Expr> >
     subcontract_constraints;
 
 call_path_t *load_call_path(std::string file_name,
                             std::set<std::string> symbols,
                             std::vector<std::string> expressions_str,
-                            std::deque<klee::ref<klee::Expr>> &expressions) {
+                            std::deque<klee::ref<klee::Expr> > &expressions) {
   std::ifstream call_path_file(file_name);
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
@@ -75,8 +76,9 @@ call_path_t *load_call_path(std::string file_name,
   } state = STATE_INIT;
 
   std::string kQuery;
-  std::vector<klee::ref<klee::Expr>> exprs;
-  std::set<std::string> declared_arrays;
+  std::vector<klee::ref<klee::Expr> > exprs;
+  std::set<std::string>
+      declared_arrays; /* Set of all arrays declared in the kQuery */
 
   int parenthesis_level = 0;
 
@@ -97,27 +99,35 @@ call_path_t *load_call_path(std::string file_name,
 
     case STATE_KQUERY: {
       if (line == ";;-- Calls --") {
-        for (auto ait : symbols) {
+        for (auto ait : symbols) { /* Symbols is the set of symbols in the
+                                      contract, each of the form -> "array
+                                      map_capacity[4] : w32 -> w8 = symbolic" */
           std::string array_name = ait.substr(sizeof("array "));
           size_t delim = array_name.find("[");
           assert(delim != std::string::npos);
           array_name = array_name.substr(0, delim);
 
           if (!declared_arrays.count(array_name)) {
-            kQuery = ait + "\n" + kQuery;
+            kQuery = ait + "\n" +
+                     kQuery; /* Pre-pend additional symbols from contract */
           }
         }
 
-        if (! expressions_str.empty()) {
+        if (!expressions_str.empty()) {
           if (kQuery.substr(kQuery.length() - 2) == "])") {
+            /* Add all expressions to kQuery */
             kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
 
             for (auto eit : expressions_str) {
               kQuery += "\n         " + eit;
             }
             kQuery += "])";
-          } else if (kQuery.substr(kQuery.length() - 6) == "false)") {
+          } else if (kQuery.substr(kQuery.length() - 6) ==
+                     "false)") { /* When does this occur? Couldn't find it in
+                                    VigNAT*/
             kQuery = kQuery.substr(0, kQuery.length() - 1) + "\n[\n";
+            std::cout << "[HINT] Found this in call path file" << file_name
+                      << std::endl;
 
             for (auto eit : expressions_str) {
               kQuery += "\n         " + eit;
@@ -147,6 +157,9 @@ call_path_t *load_call_path(std::string file_name,
 
         state = STATE_CALLS;
       } else {
+
+        /* Processing Arrays declared in the kQuery */
+
         kQuery += "\n" + line;
 
         if (line.substr(0, sizeof("array ") - 1) == "array ") {
@@ -232,13 +245,13 @@ call_path_t *load_call_path(std::string file_name,
       continue;
     } break;
 
-    case STATE_CONSTRAINTS : {
+    case STATE_CONSTRAINTS: {
       if (line == ";;-- Tags --") {
         state = STATE_TAGS;
       }
     } break;
 
-    case STATE_TAGS : {
+    case STATE_TAGS: {
       auto delim = line.find(" = ");
       assert(delim != std::string::npos && "Invalid Tag.");
       std::string name = line.substr(0, delim);
@@ -254,9 +267,10 @@ call_path_t *load_call_path(std::string file_name,
   return call_path;
 }
 
-std::map<std::string, long>
-process_candidate(call_path_t *call_path, void *contract,
-                  std::map<std::string, klee::ref<klee::Expr>> vars, std::map<std::string,std::map<std::string, std::set<int>>> &cstate) { 
+std::map<std::string, long> process_candidate(
+    call_path_t *call_path, void *contract,
+    std::map<std::string, klee::ref<klee::Expr> > vars,
+    std::map<std::string, std::map<std::string, std::set<int> > > &cstate) {
   LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_has_contract);
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
@@ -423,12 +437,13 @@ process_candidate(call_path_t *call_path, void *contract,
           assert(performance >= 0);
           total_performance[metric] += performance;
         }
-        
-	calls_processed ++;
-	std::string unique_fn_id = "LibVig Call #" + std::to_string(calls_processed) + ":" + cit.function_name;
-	cstate[unique_fn_id] = contract_get_concrete_state(
-		       cit.function_name, sub_contract_idx,variables);	
-    
+
+        calls_processed++;
+        std::string unique_fn_id = "LibVig Call #" +
+                                   std::to_string(calls_processed) + ":" +
+                                   cit.function_name;
+        cstate[unique_fn_id] = contract_get_concrete_state(
+            cit.function_name, sub_contract_idx, variables);
       }
     }
     if (!found_subcontract) {
@@ -486,6 +501,8 @@ int main(int argc, char **argv, char **envp) {
       contract_get_user_variables();
   std::set<std::string> overriden_user_variables;
 
+  /* Incorporating user-provided PCVs */
+
   std::string user_variables_param = UserVariables;
   while (!user_variables_param.empty()) {
     std::string user_variable_string =
@@ -514,8 +531,12 @@ int main(int argc, char **argv, char **envp) {
     overriden_user_variables.insert(user_var);
   }
 
-  std::map<std::string, std::set<std::string>> optimization_variables_str =
+  /* Getting OVs */
+
+  std::map<std::string, std::set<std::string> > optimization_variables_str =
       contract_get_optimization_variables();
+
+  /* Getting all subcontracts */
 
   std::map<std::pair<std::string, int>, std::string>
       subcontract_constraints_str;
@@ -529,7 +550,8 @@ int main(int argc, char **argv, char **envp) {
     }
   }
 
-  std::vector<std::string> expressions_str;
+  std::vector<std::string>
+      expressions_str; /* All expressions for UVs, OVs, subcontracts */
   for (auto vit : user_variables_str) {
     expressions_str.push_back(vit.second);
   }
@@ -542,17 +564,18 @@ int main(int argc, char **argv, char **envp) {
     expressions_str.push_back(cit.second);
   }
 
-  std::deque<klee::ref<klee::Expr>> expressions;
+  std::deque<klee::ref<klee::Expr> > expressions;
   call_path_t *call_path = load_call_path(
       InputCallPathFile, contract_get_symbols(), expressions_str, expressions);
 
-  std::map<std::string, klee::ref<klee::Expr>> user_variables;
+  std::map<std::string, klee::ref<klee::Expr> > user_variables;
   for (auto vit : user_variables_str) {
     assert(!expressions.empty());
     user_variables[vit.first] = expressions.front();
     expressions.pop_front();
   }
-  std::map<std::string, std::set<klee::ref<klee::Expr>>> optimization_variables;
+  std::map<std::string, std::set<klee::ref<klee::Expr> > >
+      optimization_variables;
   for (auto vit : optimization_variables_str) {
     for (auto cit : vit.second) {
       assert(!expressions.empty());
@@ -567,9 +590,10 @@ int main(int argc, char **argv, char **envp) {
   }
   assert(expressions.empty());
 
-  std::map<std::string, std::set<klee::ref<klee::Expr>>::iterator>
+  std::map<std::string, std::set<klee::ref<klee::Expr> >::iterator>
       candidate_iterators;
-  for (auto &it : optimization_variables) {
+  for (auto &it :
+       optimization_variables) { /*This tries to set the value of the OVs? */
     if (!overriden_user_variables.count(it.first)) {
       candidate_iterators[it.first] = it.second.begin();
     }
@@ -584,25 +608,27 @@ int main(int argc, char **argv, char **envp) {
     std::cerr << std::endl;
   }
 #endif
-  
+
   std::map<std::string, long> max_performance;
-  std::map<std::string,std::map<std::string, std::set<int>>> final_cstate;
-  std::map<std::string, std::set<klee::ref<klee::Expr>>::iterator>::iterator
+  std::map<std::string, std::map<std::string, std::set<int> > > final_cstate;
+  std::map<std::string, std::set<klee::ref<klee::Expr> >::iterator>::iterator
       pos;
   do {
-    std::map<std::string, klee::ref<klee::Expr>> vars = user_variables;
+    std::map<std::string, klee::ref<klee::Expr> > vars = user_variables;
 
     for (auto it : candidate_iterators) {
       vars[it.first] = *it.second;
     }
 
-    std::map<std::string,std::map<std::string, std::set<int>>> candidate_cstate;
+    std::map<std::string, std::map<std::string, std::set<int> > >
+        candidate_cstate;
     std::map<std::string, long> performance =
         process_candidate(call_path, contract, vars, candidate_cstate);
     for (auto metric : performance) {
       assert(metric.second >= 0);
       if (metric.second > max_performance[metric.first]) {
-	final_cstate=candidate_cstate; /*Assumption that all three metrics increase/decrease together*/
+        final_cstate = candidate_cstate; /*Assumption that all three metrics
+                                            increase/decrease together*/
         max_performance[metric.first] = metric.second;
       }
     }
@@ -628,16 +654,17 @@ int main(int argc, char **argv, char **envp) {
     std::cout << metric.first << "," << metric.second << std::endl;
   }
 
-  if(!final_cstate.empty()) {
-	for (auto cstate_it : final_cstate) {
-		for(auto it : cstate_it.second) {
-			std::cout<<"Concrete State:"<<cstate_it.first<<":" << it.first <<":"; 
-			for(auto it1 : it.second) {
-				std::cout<<" " <<it1;
-	        	}
-			std::cout<< std::endl;  
-	        }
-	}
+  if (!final_cstate.empty()) {
+    for (auto cstate_it : final_cstate) {
+      for (auto it : cstate_it.second) {
+        std::cout << "Concrete State:" << cstate_it.first << ":" << it.first
+                  << ":";
+        for (auto it1 : it.second) {
+          std::cout << " " << it1;
+        }
+        std::cout << std::endl;
+      }
+    }
   }
 
   return 0;

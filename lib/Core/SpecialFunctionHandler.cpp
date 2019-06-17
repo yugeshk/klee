@@ -973,9 +973,10 @@ void SpecialFunctionHandler::handleTraceExtraPtr(ExecutionState &state,
   width = width * 8;//Convert to bits.
   std::string name = readStringAtAddress(state, arguments[2]);
   std::string type = readStringAtAddress(state, arguments[3]);
+  std::string prefix = readStringAtAddress(state, arguments[4]);
 
   bool trace_in = true, trace_out = true;
-  size_t direction = (cast<klee::ConstantExpr>(arguments[4]))->getZExtValue();
+  size_t direction = (cast<klee::ConstantExpr>(arguments[5]))->getZExtValue();
   switch(direction) {
     case 0: trace_in = false; trace_out = false; break;
     case 1: trace_in = true;  trace_out = false; break;
@@ -989,7 +990,7 @@ void SpecialFunctionHandler::handleTraceExtraPtr(ExecutionState &state,
   }
 
   size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
-  state.traceExtraPtr(ptr, width, name, type, trace_in, trace_out);
+  state.traceExtraPtr(ptr, width, name, type, prefix, trace_in, trace_out);
 }
 
 
