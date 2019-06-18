@@ -140,9 +140,6 @@ def main():
                         output.write("\n")
 
 
->>>>>> > e538243656d008a916e81e4563798e07a73b76fb
-
-
 def find_nth(haystack, needle, n):
     start = haystack.find(needle)
     while start >= 0 and n > 1:
