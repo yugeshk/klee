@@ -308,7 +308,7 @@ KLEE_TRACE_PARAM_PROTO(_u64, int64_t);
 
 #define KLEE_TRACE_VAL_PROTO(suffix, type)                                     \
   void klee_trace_extra_val##suffix(type param, const char *name,              \
-                                    const char *prefix)
+                                    const char *prefix) {}
 KLEE_TRACE_VAL_PROTO(f, float);
 KLEE_TRACE_VAL_PROTO(d, double);
 KLEE_TRACE_VAL_PROTO(l, long);
