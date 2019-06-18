@@ -200,6 +200,21 @@ KLEE_TRACE_PARAM_PROTO(_u32, uint32_t);
 KLEE_TRACE_PARAM_PROTO(_i64, int64_t);
 KLEE_TRACE_PARAM_PROTO(_u64, int64_t);
 #undef KLEE_TRACE_PARAM_PROTO
+
+#define KLEE_TRACE_VAL_PROTO(suffix, type)                                     \
+  void klee_trace_extra_val##suffix(type param, const char *name,              \
+                                    const char *prefix)
+KLEE_TRACE_VAL_PROTO(f, float);
+KLEE_TRACE_VAL_PROTO(d, double);
+KLEE_TRACE_VAL_PROTO(l, long);
+KLEE_TRACE_VAL_PROTO(ll, long long);
+KLEE_TRACE_VAL_PROTO(_u16, uint16_t);
+KLEE_TRACE_VAL_PROTO(_i32, int32_t);
+KLEE_TRACE_VAL_PROTO(_u32, uint32_t);
+KLEE_TRACE_VAL_PROTO(_i64, int64_t);
+KLEE_TRACE_VAL_PROTO(_u64, int64_t);
+#undef KLEE_TRACE_VAL_PROTO
+
 void klee_trace_param_ptr(void *ptr, int width, const char *name);
 typedef enum TracingDirection {
   TD_NONE = 0,
@@ -271,6 +286,11 @@ int traced_variable_type(char *variable, char **type);
   klee_assert(traced_variable_type(name, &prefix) &&                           \
               "Prefix for Variable not found");                                \
   klee_trace_extra_ptr(&var, sizeof(var), name, "type", prefix, TD_BOTH);
+
+#define TRACE_VAL(var, name, type)                                             \
+  klee_assert(traced_variable_type(name, &prefix) &&                           \
+              "Prefix for Variable not found");                                \
+  klee_trace_extra_val##type(var, name, prefix);
 
 #ifdef __cplusplus
 }

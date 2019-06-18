@@ -126,6 +126,15 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_trace_param_tagged_ptr", handleTraceParamTaggedPtr, false),
   add("klee_trace_param_just_ptr", handleTraceParamJustPtr, false),
   add("klee_trace_param_fptr", handleTraceParamFPtr, false),
+  add("klee_trace_extra_val_f", handleTraceVal, false),
+  add("klee_trace_extra_val_d", handleTraceVal, false),
+  add("klee_trace_extra_val_l", handleTraceVal, false),
+  add("klee_trace_extra_val_ll", handleTraceVal, false),
+  add("klee_trace_extra_val_u16", handleTraceVal, false),
+  add("klee_trace_extra_val_i32", handleTraceVal, false),
+  add("klee_trace_extra_val_u32", handleTraceVal, false),
+  add("klee_trace_extra_val_i64", handleTraceVal, false),
+  add("klee_trace_extra_val_u64", handleTraceVal, false),
   add("klee_trace_ret", handleTraceRet, false),
   add("klee_trace_ret_ptr", handleTraceRetPtr, false),
   add("klee_trace_ret_just_ptr", handleTraceRetJustPtr, false),
@@ -1178,6 +1187,13 @@ void SpecialFunctionHandler::handleTraceParamPtrFieldJustPtr
   std::string name = readStringAtAddress(state, arguments[3]);
   width = width * 8;//Convert to bits.
   state.traceArgPtrField(arguments[0], offset, width, name, false, false);
+}
+void SpecialFunctionHandler::handleTraceVal(ExecutionState &state,
+                                              KInstruction *target,
+                                              std::vector<ref<Expr> > &arguments) {
+  std::string name = readStringAtAddress(state, arguments[1]);
+  std::string prefix = readStringAtAddress(state, arguments[2]);
+  state.traceExtraValue(arguments[0], name, prefix);
 }
 
 void SpecialFunctionHandler::handleTraceParam(ExecutionState &state,

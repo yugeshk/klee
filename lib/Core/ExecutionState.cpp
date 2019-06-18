@@ -737,6 +737,16 @@ void ExecutionState::traceExtraPtrNestedNestedField(
       .fields[offset] = descr;
 }
 
+void ExecutionState::traceExtraValue(ref<Expr> val, std::string name,
+                                     std::string prefix) {
+  traceRet();
+  callPath.back().extraVals.push_back(CallExtraVal());
+  CallExtraVal *extraVal = &callPath.back().extraVals.back();
+  extraVal->expr = val;
+  extraVal->name = name;
+  extraVal->prefix = prefix;
+}
+
 void ExecutionState::traceExtraPtr(size_t ptr, Expr::Width width,
                                    std::string name, std::string type,
                                    std::string prefix, bool trace_in,

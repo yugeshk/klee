@@ -26,8 +26,8 @@
 #define NUM_LEN (4)
 
 struct havoced_place {
-  char* name;
-  void* ptr;
+  char *name;
+  void *ptr;
   unsigned width;
 };
 
@@ -36,11 +36,10 @@ static unsigned testPosition = 0;
 struct havoced_place havoced_places[MAX_HAVOCED_PLACES];
 unsigned next_havoced_place = 0;
 
-
 static unsigned char rand_byte(void) {
   unsigned x = rand();
-  x ^= x>>16;
-  x ^= x>>8;
+  x ^= x >> 16;
+  x ^= x >> 8;
   return x & 0xFF;
 }
 
@@ -67,14 +66,16 @@ static void init_test_data() {
   char *name = getenv("KTEST_FILE");
 
   if (!name) {
-    fprintf(stdout, "KLEE-RUNTIME: KTEST_FILE not set, please enter .ktest path: ");
+    fprintf(stdout,
+            "KLEE-RUNTIME: KTEST_FILE not set, please enter .ktest path: ");
     fflush(stdout);
     name = tmp;
     if (!fgets(tmp, sizeof tmp, stdin) || !strlen(tmp)) {
-      fprintf(stderr, "KLEE-RUNTIME: cannot replay, no KTEST_FILE or user input\n");
+      fprintf(stderr,
+              "KLEE-RUNTIME: cannot replay, no KTEST_FILE or user input\n");
       exit(1);
     }
-    tmp[strlen(tmp)-1] = '\0'; /* kill newline */
+    tmp[strlen(tmp) - 1] = '\0'; /* kill newline */
   }
   testData = kTest_fromFile(name);
   if (!testData) {
@@ -98,14 +99,14 @@ void klee_make_symbolic(void *array, size_t nbytes, const char *name) {
   }
 
   if (rand_init) {
-    if (!strcmp(name,"syscall_a0")) {
+    if (!strcmp(name, "syscall_a0")) {
       unsigned long long *v = array;
       assert(nbytes == 8);
       *v = rand() % 69;
     } else {
       char *c = array;
       size_t i;
-      for (i=0; i<nbytes; i++)
+      for (i = 0; i < nbytes; i++)
         c[i] = rand_byte();
     }
     return;
@@ -147,7 +148,7 @@ void klee_make_symbolic(void *array, size_t nbytes, const char *name) {
   }
 }
 
-unsigned count_reuse(char* name) {
+unsigned count_reuse(char *name) {
   unsigned i;
   int reuse_count = 0;
   for (i = 0; i < next_havoced_place; ++i) {
@@ -159,41 +160,43 @@ unsigned count_reuse(char* name) {
       unsigned j = name_len;
       int num_suffix = 1;
       int non_numerical = 0;
-      if (name_len < candidate_len &&
-          havoced_places[i].name[name_len] != '_') {
+      if (name_len < candidate_len && havoced_places[i].name[name_len] != '_') {
         continue;
       }
       for (j = name_len + 1; j < candidate_len; ++j) {
-        if (havoced_places[i].name[j] < '0' || '9' < havoced_places[i].name[j]) {
+        if (havoced_places[i].name[j] < '0' ||
+            '9' < havoced_places[i].name[j]) {
           non_numerical = 1;
           break;
         }
       }
-      if (non_numerical) continue;
+      if (non_numerical)
+        continue;
       ++reuse_count;
     }
   }
   return reuse_count;
 }
 
-char* allocate_unique_name(char* orig, unsigned reuse_count) {
+char *allocate_unique_name(char *orig, unsigned reuse_count) {
   int size = strlen(orig) + 1 + NUM_LEN + 1;
-  char* unique_name = malloc(size);
+  char *unique_name = malloc(size);
   assert(unique_name);
   snprintf(unique_name, size, "%s_%d", orig, reuse_count);
   return unique_name;
 }
 
-void klee_possibly_havoc(void* ptr, int width, char* name) {
+void klee_possibly_havoc(void *ptr, int width, char *name) {
   assert(next_havoced_place < MAX_HAVOCED_PLACES);
   unsigned reuse_count = count_reuse(name);
   if (0 < reuse_count) {
-    char* unique_name = allocate_unique_name(name, reuse_count);
+    char *unique_name = allocate_unique_name(name, reuse_count);
     havoced_places[next_havoced_place].name = unique_name;
-    //printf("%s reused: %d times, giving %s\n", name, reuse_count, unique_name);
+    // printf("%s reused: %d times, giving %s\n", name, reuse_count,
+    // unique_name);
   } else {
     havoced_places[next_havoced_place].name = name;
-    //printf("%s not reused yet\n", name);
+    // printf("%s not reused yet\n", name);
   }
   havoced_places[next_havoced_place].ptr = ptr;
   havoced_places[next_havoced_place].width = width;
@@ -204,27 +207,29 @@ void klee_possibly_havoc(void* ptr, int width, char* name) {
 int klee_induce_invariants() {
   unsigned i, j, byte;
 
-  //TODO: support partial havoc (only selected bytes of an array)
+  // TODO: support partial havoc (only selected bytes of an array)
   if (!testData) {
     init_test_data();
   }
 
   for (i = 0; i < testData->numHavocs; ++i) {
-    char* name = testData->havocs[i].name;
+    char *name = testData->havocs[i].name;
     int found = 0;
-    //printf("name: %s; ", name);
-    //fflush(stdout);
+    // printf("name: %s; ", name);
+    // fflush(stdout);
     for (j = 0; j < next_havoced_place; ++j) {
       if (strcmp(name, havoced_places[j].name) == 0) {
         assert(!found);
         found = 1;
-        //printf("%d - %d\n", testData->havocs[i].numBytes, havoced_places[j].width);
+        // printf("%d - %d\n", testData->havocs[i].numBytes,
+        // havoced_places[j].width);
         assert(testData->havocs[i].numBytes == havoced_places[j].width);
         for (byte = 0; byte < testData->havocs[i].numBytes; ++byte) {
-          uint32_t byte_word = byte/32;
-          uint32_t selector = 1 << (byte - byte_word*32);
+          uint32_t byte_word = byte / 32;
+          uint32_t selector = 1 << (byte - byte_word * 32);
           if (testData->havocs[i].mask[byte_word] & selector) {
-            ((uint8_t*)(havoced_places[j].ptr))[byte] = testData->havocs[i].bytes[byte];
+            ((uint8_t *)(havoced_places[j].ptr))[byte] =
+                testData->havocs[i].bytes[byte];
           }
         }
       }
@@ -235,15 +240,12 @@ int klee_induce_invariants() {
   return 1;
 }
 
-
-void klee_silent_exit(int x) {
-  exit(x);
-}
+void klee_silent_exit(int x) { exit(x); }
 
 uintptr_t klee_choose(uintptr_t n) {
   uintptr_t x;
   klee_make_symbolic(&x, sizeof x, "klee_choose");
-  if(x >= n)
+  if (x >= n)
     report_internal_error("klee_choose failure. max = %ld, got = %ld\n", n, x);
   return x;
 }
@@ -254,10 +256,8 @@ void klee_assume(uintptr_t x) {
   }
 }
 
-#define KLEE_GET_VALUE_STUB(suffix, type)	\
-	type klee_get_value##suffix(type x) { \
-		return x; \
-	}
+#define KLEE_GET_VALUE_STUB(suffix, type)                                      \
+  type klee_get_value##suffix(type x) { return x; }
 
 KLEE_GET_VALUE_STUB(f, float)
 KLEE_GET_VALUE_STUB(d, double)
@@ -268,10 +268,10 @@ KLEE_GET_VALUE_STUB(_i64, int64_t)
 
 #undef KLEE_GET_VALUE_STUB
 
-int klee_range(int begin, int end, const char* name) {
+int klee_range(int begin, int end, const char *name) {
   int x;
   klee_make_symbolic(&x, sizeof x, name);
-  if (x<begin || x>=end) {
+  if (x < begin || x >= end) {
     report_internal_error("invalid klee_range(%u,%u,%s) value, got: %u\n",
                           begin, end, name, x);
   }
@@ -284,71 +284,85 @@ int klee_int(const char *name) {
   return x;
 }
 
-void klee_abort() {
-  exit(-1);
-}
+void klee_abort() { exit(-1); }
 
 /* not sure we should even define.  is for debugging. */
-void klee_print_expr(const char *msg, ...) { }
+void klee_print_expr(const char *msg, ...) {}
 
-void klee_set_forking(unsigned enable) { }
+void klee_set_forking(unsigned enable) {}
 
-//Vigor: just ignore them
+// Vigor: just ignore them
 
-#define KLEE_TRACE_PARAM_PROTO(suffix, type) \
-  void klee_trace_param##suffix(type param, const char* name) {}
-  KLEE_TRACE_PARAM_PROTO(f, float);
-  KLEE_TRACE_PARAM_PROTO(d, double);
-  KLEE_TRACE_PARAM_PROTO(l, long);
-  KLEE_TRACE_PARAM_PROTO(ll, long long);
-  KLEE_TRACE_PARAM_PROTO(_u16, uint16_t);
-  KLEE_TRACE_PARAM_PROTO(_i32, int32_t);
-  KLEE_TRACE_PARAM_PROTO(_u32, uint32_t);
-  KLEE_TRACE_PARAM_PROTO(_i64, int64_t);
-  KLEE_TRACE_PARAM_PROTO(_u64, int64_t);
+#define KLEE_TRACE_PARAM_PROTO(suffix, type)                                   \
+  void klee_trace_param##suffix(type param, const char *name) {}
+KLEE_TRACE_PARAM_PROTO(f, float);
+KLEE_TRACE_PARAM_PROTO(d, double);
+KLEE_TRACE_PARAM_PROTO(l, long);
+KLEE_TRACE_PARAM_PROTO(ll, long long);
+KLEE_TRACE_PARAM_PROTO(_u16, uint16_t);
+KLEE_TRACE_PARAM_PROTO(_i32, int32_t);
+KLEE_TRACE_PARAM_PROTO(_u32, uint32_t);
+KLEE_TRACE_PARAM_PROTO(_i64, int64_t);
+KLEE_TRACE_PARAM_PROTO(_u64, int64_t);
 #undef KLEE_TRACE_PARAM_PROTO
-void klee_trace_param_ptr(void* ptr, int width, const char* name) {}
-  void klee_trace_param_ptr_directed(void* ptr, int width,
-                                     const char* name,
-                                     TracingDirection td){}
-  void klee_trace_param_tagged_ptr(void* ptr, int width,
-                                   const char* name, const char* type,
-                                   TracingDirection td){}
-  void klee_trace_param_just_ptr(void* ptr, int width, const char* name){}
-  void klee_trace_param_fptr(void* ptr, const char* name){}
-  void klee_trace_ret(){}
-  void klee_trace_ret_ptr(int width){}
-  void klee_trace_ret_just_ptr(int width){}
 
-  void klee_trace_param_ptr_field(void* ptr, int offset, int width, char* name){}
-  void klee_trace_param_ptr_field_directed(void* ptr, int offset,
-                                           int width, char* name,
-                                           TracingDirection td){}
-  void klee_trace_param_ptr_field_just_ptr(void* ptr, int offset,
-                                           int width, char* name){}
-  void klee_trace_ret_ptr_field(int offset, int width, char* name){}
-  void klee_trace_ret_ptr_field_just_ptr(int offset, int width, char* name){}
-  void klee_trace_param_ptr_nested_field(void* ptr, int base_offset,
-                                         int offset, int width, char* name){}
-  void klee_trace_param_ptr_nested_field_directed(void* ptr, int base_offset,
-                                                  int offset, int width, char* name,
-                                                  TracingDirection td){}
-  void klee_trace_ret_ptr_nested_field(int base_offset,
-                                       int offset, int width, char* name){}
-  void klee_trace_extra_ptr(void* ptr, int width, char* name, char* type, char* prefix,  TracingDirection td){}
-  void klee_trace_extra_ptr_field(void* ptr, int offset, int width, char* name, TracingDirection td){}
-  void klee_trace_extra_ptr_field_just_ptr(void* ptr, int offset,
-                                           int width, char* name){}
-  void klee_trace_extra_ptr_nested_field(void* ptr, int base_offset,
-                                         int offset, int width, char* name, TracingDirection td){}
-  void klee_trace_extra_ptr_nested_nested_field(void* ptr, int base_base_offset,
-                                                int base_offset, int offset,
-                                                int width, char* name, TracingDirection td){}
+#define KLEE_TRACE_VAL_PROTO(suffix, type)                                     \
+  void klee_trace_extra_val##suffix(type param, const char *name,              \
+                                    const char *prefix)
+KLEE_TRACE_VAL_PROTO(f, float);
+KLEE_TRACE_VAL_PROTO(d, double);
+KLEE_TRACE_VAL_PROTO(l, long);
+KLEE_TRACE_VAL_PROTO(ll, long long);
+KLEE_TRACE_VAL_PROTO(_u16, uint16_t);
+KLEE_TRACE_VAL_PROTO(_i32, int32_t);
+KLEE_TRACE_VAL_PROTO(_u32, uint32_t);
+KLEE_TRACE_VAL_PROTO(_i64, int64_t);
+KLEE_TRACE_VAL_PROTO(_u64, int64_t);
+#undef KLEE_TRACE_VAL_PROTO
 
-  void klee_forget_all(){}
+void klee_trace_param_ptr(void *ptr, int width, const char *name) {}
+void klee_trace_param_ptr_directed(void *ptr, int width, const char *name,
+                                   TracingDirection td) {}
+void klee_trace_param_tagged_ptr(void *ptr, int width, const char *name,
+                                 const char *type, TracingDirection td) {}
+void klee_trace_param_just_ptr(void *ptr, int width, const char *name) {}
+void klee_trace_param_fptr(void *ptr, const char *name) {}
+void klee_trace_ret() {}
+void klee_trace_ret_ptr(int width) {}
+void klee_trace_ret_just_ptr(int width) {}
 
+void klee_trace_param_ptr_field(void *ptr, int offset, int width, char *name) {}
+void klee_trace_param_ptr_field_directed(void *ptr, int offset, int width,
+                                         char *name, TracingDirection td) {}
+void klee_trace_param_ptr_field_just_ptr(void *ptr, int offset, int width,
+                                         char *name) {}
+void klee_trace_ret_ptr_field(int offset, int width, char *name) {}
+void klee_trace_ret_ptr_field_just_ptr(int offset, int width, char *name) {}
+void klee_trace_param_ptr_nested_field(void *ptr, int base_offset, int offset,
+                                       int width, char *name) {}
+void klee_trace_param_ptr_nested_field_directed(void *ptr, int base_offset,
+                                                int offset, int width,
+                                                char *name,
+                                                TracingDirection td) {}
+void klee_trace_ret_ptr_nested_field(int base_offset, int offset, int width,
+                                     char *name) {}
+void klee_trace_extra_ptr(void *ptr, int width, char *name, char *type,
+                          char *prefix, TracingDirection td) {}
+void klee_trace_extra_ptr_field(void *ptr, int offset, int width, char *name,
+                                TracingDirection td) {}
+void klee_trace_extra_ptr_field_just_ptr(void *ptr, int offset, int width,
+                                         char *name) {}
+void klee_trace_extra_ptr_nested_field(void *ptr, int base_offset, int offset,
+                                       int width, char *name,
+                                       TracingDirection td) {}
+void klee_trace_extra_ptr_nested_nested_field(void *ptr, int base_base_offset,
+                                              int base_offset, int offset,
+                                              int width, char *name,
+                                              TracingDirection td) {}
 
-  void klee_forbid_access(void* ptr, int width, char* message){}
-  void klee_allow_access(void* ptr, int width){}
+void klee_forget_all() {}
 
-  void klee_dump_constraints(){}
+void klee_forbid_access(void *ptr, int width, char *message) {}
+void klee_allow_access(void *ptr, int width) {}
+
+void klee_dump_constraints() {}
