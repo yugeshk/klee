@@ -10,6 +10,7 @@ join -t, -j1 \
     | awk -F, '
       {
         performance = ($3 + $4);
+		print $1 "," $2 "," performance > "combined_perf.txt";
         if (performance > max_performance[$2]) {
           max_performance[$2] = performance;
           trace[$2] = $1;
