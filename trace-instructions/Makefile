@@ -1,5 +1,3 @@
-
-
 default: pin-trace.so
 
 pin-trace.o: pin-trace.cpp
