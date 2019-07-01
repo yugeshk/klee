@@ -1,5 +1,3 @@
-PINDIR = $(HOME)/projects/Bolt/pin
-
 default: pin-trace.so
 
 pin-trace.o: pin-trace.cpp
