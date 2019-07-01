@@ -87,7 +87,7 @@ def main():
                                                 each_line[index6+2:], 16)
                                             for value in reg_values:
                                                 output.write(
-                                                    str(hex(meta_reg_val+value))[2:]+"\n")
+                                                    str(hex(meta_reg_val+value))[2:].upper()+"\n")
                                                 duplicated = duplicated + 1
                                             # print(meta_reg_val)
                                             # print(reg_values)
