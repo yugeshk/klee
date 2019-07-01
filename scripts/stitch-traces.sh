@@ -39,7 +39,7 @@ function stitch_traces {
   fi
   touch concrete-state-log.txt
   grep -v "Concrete State" stateful-analysis-log.txt > stateful-perf.txt
-
+  cat stateful-perf.txt | cut -d "," -f1 | sort -nr | uniq > relevant_traces
   #sed -i '1d' joblog.txt && cat joblog.txt | awk '{print $7}' | sort -nr | uniq -c  
 
 }
