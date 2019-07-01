@@ -1,4 +1,4 @@
-PINDIR = $(HOME)/projects/Bolt/pin
+
 
 default: pin-trace.so
 
