@@ -20,15 +20,17 @@
 #include <klee/Constraints.h>
 #include <klee/Solver.h>
 #include <vector>
+#include <stdlib.h>
+#include <klee/util/ExprVisitor.h>
 
 #define DEBUG
 
 namespace {
 llvm::cl::opt<std::string>
-    ContractLib("contract",
-                llvm::cl::desc("A performance contract library to load that "
-                               "describes the data structure performance."),
-                llvm::cl::Required);
+ContractLib("contract",
+            llvm::cl::desc("A performance contract library to load that "
+                           "describes the data structure performance."),
+            llvm::cl::Required);
 
 llvm::cl::opt<std::string> UserVariables(
     "user-vars",
@@ -41,178 +43,319 @@ llvm::cl::opt<std::string> InputCallPathFile(llvm::cl::desc("<call path>"),
 
 typedef struct {
   std::string function_name;
-  std::map<std::string,
-           std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr> > >
-      extra_vars;
+  std::string ds_id;
+  std::map<std::string, std::pair<klee::ref<klee::Expr>,
+                                  klee::ref<klee::Expr> > > extra_vars;
 } call_t;
+
+typedef struct {
+  std::string name;
+  std::string ds_id;
+  int occurence;
+} initial_var_t;
+
+bool operator<(initial_var_t a, initial_var_t b) {
+  if (a.name < b.name) {
+    return true;
+  } else if (a.name == b.name) {
+    if (a.ds_id < b.ds_id) {
+      return true;
+    } else if (a.ds_id == b.ds_id) {
+      return a.occurence < b.occurence;
+    }
+  }
+  return false;
+}
 
 typedef struct {
   klee::ConstraintManager constraints;
   std::vector<call_t> calls;
   std::map<std::string, const klee::Array *> arrays;
-  std::map<std::string, klee::ref<klee::Expr> > initial_extra_vars;
+  std::map<initial_var_t, klee::ref<klee::Expr> > initial_extra_vars;
+  klee::ref<klee::Expr> incoming_packet;
+  klee::ref<klee::Expr> outgoing_packet;
   std::map<std::string, std::string> tags;
 } call_path_t;
 
 std::map<std::pair<std::string, int>, klee::ref<klee::Expr> >
-    subcontract_constraints;
+subcontract_constraints;
 
 call_path_t *load_call_path(std::string file_name,
-                            std::set<std::string> symbols,
                             std::vector<std::string> expressions_str,
-                            std::deque<klee::ref<klee::Expr> > &expressions) {
+                            std::deque<klee::ref<klee::Expr> > &expressions,
+                            void *contract) {
+  LOAD_SYMBOL(contract, contract_get_symbol_size);
+  LOAD_SYMBOL(contract, contract_get_symbols);
+
   std::ifstream call_path_file(file_name);
   assert(call_path_file.is_open() && "Unable to open call path file.");
 
   call_path_t *call_path = new call_path_t;
 
   enum {
-    STATE_INIT,
-    STATE_KQUERY,
-    STATE_CALLS,
-    STATE_CALLS_MULTILINE,
-    STATE_CONSTRAINTS,
-    STATE_TAGS,
-  } state = STATE_INIT;
+    PASS_ARRAYS,
+    PASS_PARSE,
+  } pass = PASS_ARRAYS;
 
-  std::string kQuery;
-  std::vector<klee::ref<klee::Expr> > exprs;
-  std::set<std::string>
-      declared_arrays; /* Set of all arrays declared in the kQuery */
+  std::set<std::string> symbols;
 
-  int parenthesis_level = 0;
+  do {
+    enum {
+      STATE_INIT,
+      STATE_KQUERY,
+      STATE_CALLS,
+      STATE_CALLS_MULTILINE,
+      STATE_CONSTRAINTS,
+      STATE_TAGS,
+    } state = STATE_INIT;
 
-  while (!call_path_file.eof()) {
-    std::string line;
-    std::getline(call_path_file, line);
+    std::string array_dsid;
 
-    if (line.empty()) {
-      continue;
-    }
+    std::string kQuery;
+    std::vector<klee::ref<klee::Expr> > exprs;
+    std::set<std::string>
+    declared_arrays; /* Set of all arrays declared in the kQuery */
 
-    switch (state) {
-    case STATE_INIT: {
-      if (line == ";;-- kQuery --") {
-        state = STATE_KQUERY;
+    int parenthesis_level = 0;
+
+    while (!call_path_file.eof()) {
+      std::string line;
+      std::getline(call_path_file, line);
+
+      if (line.empty()) {
+        continue;
       }
-    } break;
 
-    case STATE_KQUERY: {
-      if (line == ";;-- Calls --") {
-        for (auto ait : symbols) { /* Symbols is the set of symbols in the
-                                      contract, each of the form -> "array
-                                      map_capacity[4] : w32 -> w8 = symbolic" */
-          std::string array_name = ait.substr(sizeof("array "));
-          size_t delim = array_name.find("[");
-          assert(delim != std::string::npos);
-          array_name = array_name.substr(0, delim);
-
-          if (!declared_arrays.count(array_name)) {
-            kQuery = ait + "\n" +
-                     kQuery; /* Pre-pend additional symbols from contract */
-          }
+      switch (state) {
+      case STATE_INIT: {
+        if (line == ";;-- kQuery --") {
+          state = STATE_KQUERY;
         }
+      } break;
 
-        if (!expressions_str.empty()) {
-          if (kQuery.substr(kQuery.length() - 2) == "])") {
-            /* Add all expressions to kQuery */
-            kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
+      case STATE_KQUERY: {
+        if (line == ";;-- Calls --") {
+          state = STATE_CALLS;
 
-            for (auto eit : expressions_str) {
-              kQuery += "\n         " + eit;
+          if (pass == PASS_PARSE) {
+            for (auto ait : contract_get_symbols()) {
+              /* Symbols is the set of symbols in the
+                 contract, each of the form ->
+                 "array map_capacity[4] : w32 -> w8 = symbolic" */
+              std::string array_name = ait.substr(sizeof("array "));
+              size_t delim = array_name.find("[");
+              assert(delim != std::string::npos);
+              array_name = array_name.substr(0, delim);
+
+              if (!declared_arrays.count(array_name)) {
+                kQuery = ait + "\n" +
+                         kQuery; /* Pre-pend additional symbols from contract */
+              }
             }
-            kQuery += "])";
-          } else if (kQuery.substr(kQuery.length() - 6) ==
-                     "false)") { /* When does this occur? Couldn't find it in
-                                    VigNAT*/
-            kQuery = kQuery.substr(0, kQuery.length() - 1) + "\n[\n";
-            std::cout << "[HINT] Found this in call path file" << file_name
-                      << std::endl;
 
-            for (auto eit : expressions_str) {
-              kQuery += "\n         " + eit;
+            for (auto sit : symbols) {
+              kQuery = sit + "\n" +
+                       kQuery; /* Pre-pend additional symbols from PCVs */
             }
-            kQuery += "])";
-          } else {
-            assert(false && "Mal-formed kQuery.");
+
+            if (!expressions_str.empty()) {
+              if (kQuery.substr(kQuery.length() - 2) == "])") {
+                /* Add all expressions to kQuery */
+                kQuery = kQuery.substr(0, kQuery.length() - 2) + "\n";
+
+                for (auto eit : expressions_str) {
+                  kQuery += "\n         " + eit;
+                }
+                kQuery += "])";
+              } else if (kQuery.substr(kQuery.length() - 6) ==
+                         "false)") { /* When does this occur? Couldn't find it
+                                        in
+                                         VigNAT*/
+                kQuery = kQuery.substr(0, kQuery.length() - 1) + "\n[\n";
+                std::cout << "[HINT] Found this in call path file" << file_name
+                          << std::endl;
+
+                for (auto eit : expressions_str) {
+                  kQuery += "\n         " + eit;
+                }
+                kQuery += "])";
+              } else {
+                assert(false && "Mal-formed kQuery.");
+              }
+            }
+
+            llvm::MemoryBuffer *MB = llvm::MemoryBuffer::getMemBuffer(kQuery);
+            klee::ExprBuilder *Builder = klee::createDefaultExprBuilder();
+            klee::expr::Parser *P =
+                klee::expr::Parser::Create("", MB, Builder, false);
+            while (klee::expr::Decl *D = P->ParseTopLevelDecl()) {
+              assert(!P->GetNumErrors() &&
+                     "Error parsing kquery in call path file.");
+              if (klee::expr::ArrayDecl *AD =
+                      dyn_cast<klee::expr::ArrayDecl>(D)) {
+                call_path->arrays[AD->Root->name] = AD->Root;
+              } else if (klee::expr::QueryCommand *QC =
+                             dyn_cast<klee::expr::QueryCommand>(D)) {
+                call_path->constraints =
+                    klee::ConstraintManager(QC->Constraints);
+                exprs = QC->Values;
+                break;
+              }
+            }
           }
-        }
-
-        llvm::MemoryBuffer *MB = llvm::MemoryBuffer::getMemBuffer(kQuery);
-        klee::ExprBuilder *Builder = klee::createDefaultExprBuilder();
-        klee::expr::Parser *P =
-            klee::expr::Parser::Create("", MB, Builder, false);
-        while (klee::expr::Decl *D = P->ParseTopLevelDecl()) {
-          assert(!P->GetNumErrors() &&
-                 "Error parsing kquery in call path file.");
-          if (klee::expr::ArrayDecl *AD = dyn_cast<klee::expr::ArrayDecl>(D)) {
-            call_path->arrays[AD->Root->name] = AD->Root;
-          } else if (klee::expr::QueryCommand *QC =
-                         dyn_cast<klee::expr::QueryCommand>(D)) {
-            call_path->constraints = klee::ConstraintManager(QC->Constraints);
-            exprs = QC->Values;
-            break;
-          }
-        }
-
-        state = STATE_CALLS;
-      } else {
-
-        /* Processing Arrays declared in the kQuery */
-
-        kQuery += "\n" + line;
-
-        if (line.substr(0, sizeof("array ") - 1) == "array ") {
-          std::string array_name = line.substr(sizeof("array "));
-          size_t delim = array_name.find("[");
-          assert(delim != std::string::npos);
-          array_name = array_name.substr(0, delim);
-          declared_arrays.insert(array_name);
-        }
-      }
-      break;
-
-    case STATE_CALLS:
-      if (line == ";;-- Constraints --") {
-        for (size_t i = 0; i < expressions_str.size(); i++) {
-          assert(!exprs.empty() && "Too few expressions in kQuery.");
-          expressions.push_back(exprs.front());
-          exprs.erase(exprs.begin());
-        }
-
-        assert(exprs.empty() && "Too many expressions in kQuery.");
-
-        state = STATE_CONSTRAINTS;
-      } else {
-        size_t delim = line.find(":");
-        assert(delim != std::string::npos);
-        std::string preamble = line.substr(0, delim);
-        line = line.substr(delim + 1);
-
-        if (preamble == "extra") {
-          while (line[0] == ' ') {
-            line = line.substr(1);
-          }
-
-          delim = line.find("&");
-          assert(delim != std::string::npos);
-          std::string name = line.substr(0, delim);
-
-          assert(exprs.size() >= 2 && "Not enough expression in kQuery.");
-          call_path->calls.back().extra_vars[name] =
-              std::make_pair(exprs[0], exprs[1]);
-          if (!call_path->initial_extra_vars.count(name)) {
-            call_path->initial_extra_vars[name] = exprs[0];
-          }
-          exprs.erase(exprs.begin(), exprs.begin() + 2);
         } else {
-          call_path->calls.emplace_back();
+          if (pass == PASS_PARSE) {
+            /* Processing Arrays declared in the kQuery */
 
-          delim = line.find("(");
-          assert(delim != std::string::npos);
-          call_path->calls.back().function_name = line.substr(0, delim);
+            kQuery += "\n" + line;
+
+            if (line.substr(0, sizeof("array ") - 1) == "array ") {
+              std::string array_name = line.substr(sizeof("array "));
+              size_t delim = array_name.find("[");
+              assert(delim != std::string::npos);
+              array_name = array_name.substr(0, delim);
+              declared_arrays.insert(array_name);
+            }
+          }
         }
+      } break;
 
+      case STATE_CALLS: {
+        if (line == ";;-- Constraints --") {
+          if (pass == PASS_ARRAYS) {
+            pass = PASS_PARSE;
+            state = STATE_INIT;
+            call_path_file.seekg(0, std::ios::beg);
+            continue;
+          } else if (pass == PASS_PARSE) {
+            for (size_t i = 0; i < expressions_str.size(); i++) {
+              assert(!exprs.empty() && "Too few expressions in kQuery.");
+              expressions.push_back(exprs.front());
+              exprs.erase(exprs.begin());
+            }
+
+            assert(exprs.empty() && "Too many expressions in kQuery.");
+
+            state = STATE_CONSTRAINTS;
+          }
+        } else {
+          size_t delim = line.find(":");
+          assert(delim != std::string::npos);
+          std::string preamble = line.substr(0, delim);
+          line = line.substr(delim + 1);
+
+          if (preamble == "extra") {
+            delim = line.find(":");
+            assert(delim != std::string::npos);
+            std::string extra_type = line.substr(0, delim);
+            line = line.substr(delim + 1);
+
+            if (extra_type == "DS") {
+              delim = line.find(":");
+              assert(delim != std::string::npos);
+              std::string ds_type = line.substr(0, delim);
+              line = line.substr(delim + 1);
+
+#define DS_ID_PREAMBLE "(w32 "
+              assert(line.substr(0, sizeof(DS_ID_PREAMBLE) - 1) ==
+                     DS_ID_PREAMBLE);
+              line = line.substr(sizeof(DS_ID_PREAMBLE) - 1);
+
+              delim = line.find(")");
+              assert(delim != std::string::npos);
+              std::string ds_id = line.substr(0, delim);
+
+              if (pass == PASS_ARRAYS) {
+                array_dsid = ds_type + "_" + ds_id;
+              } else if (pass == PASS_PARSE) {
+                call_path->calls.back().ds_id = ds_type + "_" + ds_id;
+              }
+              line = "";
+            } else if (extra_type == "PCV" || extra_type == "SV") {
+              delim = line.find(":");
+              assert(delim != std::string::npos);
+              std::string extra_name = line.substr(0, delim);
+              line = line.substr(delim + 1);
+
+#define OCCURENCE_SUFFIX "_occurence"
+              int extra_occurence = 0;
+              delim = extra_name.find(OCCURENCE_SUFFIX);
+              if (delim != std::string::npos) {
+                extra_occurence =
+                    atoi(extra_name.substr(delim + sizeof(OCCURENCE_SUFFIX) - 1)
+                             .c_str());
+                extra_name = extra_name.substr(0, delim);
+              }
+
+              if (pass == PASS_ARRAYS) {
+                int symbol_size = contract_get_symbol_size(extra_name);
+                assert(symbol_size > 0);
+                symbols.insert(
+                    "array initial_" + extra_name + "_" + array_dsid + "_" +
+                    std::to_string(extra_occurence) + "[" +
+                    std::to_string(symbol_size) + "] : w32 -> w8 = symbolic");
+              } else if (pass == PASS_PARSE) {
+                assert(exprs.size() >= 2 && "Not enough expression in kQuery.");
+                call_path->calls.back().extra_vars[extra_name] =
+                    std::make_pair(exprs[0], exprs[1]);
+                if (!call_path->initial_extra_vars.count(
+                         (initial_var_t) { extra_name,
+                                           call_path->calls.back().ds_id,
+                                           extra_occurence })) {
+                  call_path->initial_extra_vars[(initial_var_t) {
+                    extra_name, call_path->calls.back().ds_id, extra_occurence
+                  }] = exprs[0];
+                }
+                exprs.erase(exprs.begin(), exprs.begin() + 2);
+              }
+            } else if (extra_type == "MBUF") {
+              delim = line.find(":");
+              assert(delim != std::string::npos);
+              std::string mbuf_name = line.substr(0, delim);
+              line = line.substr(delim + 1);
+
+              if (pass == PASS_PARSE) {
+                if (mbuf_name == "incoming_package") {
+                  assert(exprs.size() >= 2 &&
+                         "Not enough expression in kQuery.");
+                  call_path->incoming_packet = exprs[1];
+                  exprs.erase(exprs.begin(), exprs.begin() + 2);
+                } else if (mbuf_name == "mbuf") {
+                  assert(exprs.size() >= 2 &&
+                         "Not enough expression in kQuery.");
+                  call_path->outgoing_packet = exprs[1];
+                  exprs.erase(exprs.begin(), exprs.begin() + 2);
+                }
+              }
+            } else {
+              assert(false && "Unknown extra type.");
+            }
+          } else {
+            if (pass == PASS_PARSE) {
+              call_path->calls.emplace_back();
+
+              delim = line.find("(");
+              assert(delim != std::string::npos);
+              call_path->calls.back().function_name = line.substr(0, delim);
+            }
+          }
+
+          for (char c : line) {
+            if (c == '(') {
+              parenthesis_level++;
+            } else if (c == ')') {
+              parenthesis_level--;
+              assert(parenthesis_level >= 0);
+            }
+          }
+
+          if (parenthesis_level > 0) {
+            state = STATE_CALLS_MULTILINE;
+          }
+        }
+      } break;
+
+      case STATE_CALLS_MULTILINE: {
         for (char c : line) {
           if (c == '(') {
             parenthesis_level++;
@@ -222,54 +365,63 @@ call_path_t *load_call_path(std::string file_name,
           }
         }
 
-        if (parenthesis_level > 0) {
-          state = STATE_CALLS_MULTILINE;
+        if (parenthesis_level == 0) {
+          state = STATE_CALLS;
         }
-      }
-    } break;
 
-    case STATE_CALLS_MULTILINE: {
-      for (char c : line) {
-        if (c == '(') {
-          parenthesis_level++;
-        } else if (c == ')') {
-          parenthesis_level--;
-          assert(parenthesis_level >= 0);
+        continue;
+      } break;
+
+      case STATE_CONSTRAINTS: {
+        if (line == ";;-- Tags --") {
+          state = STATE_TAGS;
         }
+      } break;
+
+      case STATE_TAGS: {
+        auto delim = line.find(" = ");
+        assert(delim != std::string::npos && "Invalid Tag.");
+        std::string name = line.substr(0, delim);
+        std::string value = line.substr(delim + sizeof(" = ") - 1);
+
+        call_path->tags[name] = value;
+      } break;
+
+      default: {
+        assert(false && "Invalid call path file.");
+      } break;
       }
-
-      if (parenthesis_level == 0) {
-        state = STATE_CALLS;
-      }
-
-      continue;
-    } break;
-
-    case STATE_CONSTRAINTS: {
-      if (line == ";;-- Tags --") {
-        state = STATE_TAGS;
-      }
-    } break;
-
-    case STATE_TAGS: {
-      auto delim = line.find(" = ");
-      assert(delim != std::string::npos && "Invalid Tag.");
-      std::string name = line.substr(0, delim);
-      std::string value = line.substr(delim + sizeof(" = ") - 1);
-
-      call_path->tags[name] = value;
-    } break;
-
-    default: { assert(false && "Invalid call path file."); } break;
     }
-  }
+  } while (false);
 
   return call_path;
 }
 
+namespace {
+class ExprReplaceVisitor : public klee::ExprVisitor {
+private:
+  const std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> > &replacements;
+
+public:
+  ExprReplaceVisitor(const std::map<klee::ref<klee::Expr>,
+                                    klee::ref<klee::Expr> > &_replacements)
+      : klee::ExprVisitor(true), replacements(_replacements) {}
+
+  klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
+    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> >::const_iterator it =
+        replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
+    if (it != replacements.end()) {
+      return klee::ExprVisitor::Action::changeTo(it->second);
+    } else {
+      return klee::ExprVisitor::Action::doChildren();
+    }
+  }
+};
+}
+
 std::map<std::string, long> process_candidate(
     call_path_t *call_path, void *contract,
-    std::map<std::string, klee::ref<klee::Expr> > vars,
+    std::map<initial_var_t, klee::ref<klee::Expr> > vars,
     std::map<std::string, std::map<std::string, std::set<int> > > &cstate) {
   LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_has_contract);
@@ -282,7 +434,8 @@ std::map<std::string, long> process_candidate(
   std::cerr << std::endl;
   std::cerr << "Debug: Trying candidate with variables:" << std::endl;
   for (auto vit : vars) {
-    std::cerr << "Debug:   " << vit.first << " = " << std::flush;
+    std::cerr << "Debug:   " << vit.first.name << "_" << vit.first.ds_id << "_"
+              << vit.first.occurence << " = " << std::flush;
     vit.second->print(llvm::errs());
     llvm::errs().flush();
     std::cerr << std::endl;
@@ -299,7 +452,9 @@ std::map<std::string, long> process_candidate(
 
   klee::ExprBuilder *exprBuilder = klee::createDefaultExprBuilder();
   for (auto extra_var : call_path->initial_extra_vars) {
-    std::string initial_name = "initial_" + extra_var.first;
+    std::string initial_name = "initial_" + extra_var.first.name + "_" +
+                               extra_var.first.ds_id + "_" +
+                               std::to_string(extra_var.first.occurence);
 
     assert(call_path->arrays.count(initial_name));
     const klee::Array *array = call_path->arrays[initial_name];
@@ -320,7 +475,76 @@ std::map<std::string, long> process_candidate(
   }
 
   for (auto var : vars) {
-    if (call_path->initial_extra_vars.count(var.first)) {
+    if (var.first.ds_id == "" && var.first.occurence == 0) {
+      for (auto vit : call_path->initial_extra_vars) {
+        if (vit.first.name == var.first.name) {
+          std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> > replacements;
+          for (auto extra_var : call_path->initial_extra_vars) {
+            std::string specific_initial_name =
+                "initial_" + extra_var.first.name + "_" +
+                extra_var.first.ds_id + "_" +
+                std::to_string(extra_var.first.occurence);
+            assert(call_path->arrays.count(specific_initial_name));
+            const klee::Array *specific_array =
+                call_path->arrays[specific_initial_name];
+            assert(specific_array && "Initial variable not found");
+            klee::UpdateList specific_ul(specific_array, 0);
+            klee::ref<klee::Expr> specific_read_expr = exprBuilder->Read(
+                specific_ul, exprBuilder->Constant(0, klee::Expr::Int32));
+            for (unsigned offset = 1; offset < specific_array->getSize();
+                 offset++) {
+              specific_read_expr = exprBuilder->Concat(
+                  exprBuilder->Read(
+                      specific_ul,
+                      exprBuilder->Constant(offset, klee::Expr::Int32)),
+                  specific_read_expr);
+            }
+
+            std::string general_initial_name =
+                "initial_" + extra_var.first.name;
+            assert(call_path->arrays.count(general_initial_name));
+            const klee::Array *general_array =
+                call_path->arrays[general_initial_name];
+            assert(general_array && "Initial variable not found");
+            klee::UpdateList general_ul(general_array, 0);
+            klee::ref<klee::Expr> general_read_expr = exprBuilder->Read(
+                general_ul, exprBuilder->Constant(0, klee::Expr::Int32));
+            for (unsigned offset = 1; offset < general_array->getSize();
+                 offset++) {
+              general_read_expr = exprBuilder->Concat(
+                  exprBuilder->Read(general_ul, exprBuilder->Constant(
+                                                    offset, klee::Expr::Int32)),
+                  general_read_expr);
+            }
+
+            replacements[general_read_expr] = specific_read_expr;
+          }
+
+          klee::ref<klee::Expr> specific_var_expr =
+              ExprReplaceVisitor(replacements).visit(var.second);
+
+          klee::ref<klee::Expr> eq_expr =
+              exprBuilder->Eq(specific_var_expr, vit.second);
+
+          klee::Query sat_query(constraints, eq_expr);
+          bool result = false;
+          bool success = solver->mayBeTrue(sat_query, result);
+          assert(success);
+
+          if (!result) {
+#ifdef DEBUG
+            std::cerr << "Debug: Candidate is trivially UNSAT." << std::endl;
+            eq_expr->print(llvm::errs());
+            llvm::errs().flush();
+            std::cerr << std::endl;
+#endif
+            return {};
+          }
+
+          constraints.addConstraint(eq_expr);
+        }
+      }
+    } else if (call_path->initial_extra_vars.count(var.first)) {
       klee::ref<klee::Expr> eq_expr =
           exprBuilder->Eq(var.second, call_path->initial_extra_vars[var.first]);
 
@@ -341,14 +565,16 @@ std::map<std::string, long> process_candidate(
 
       constraints.addConstraint(eq_expr);
     } else {
-      std::cerr << "Warning: ignoring variable: " << var.first << std::endl;
+      std::cerr << "Warning: ignoring variable: " << var.first.name << "_"
+                << var.first.ds_id << "_" << var.first.occurence << std::endl;
     }
   }
 
 #ifdef DEBUG
   std::cerr << "Debug: Using candidate with variables:" << std::endl;
   for (auto vit : vars) {
-    std::cerr << "Debug:   " << vit.first << " = " << std::flush;
+    std::cerr << "Debug:   " << vit.first.name << "_" << vit.first.ds_id << "_"
+              << vit.first.occurence << " = " << std::flush;
     vit.second->print(llvm::errs());
     llvm::errs().flush();
     std::cerr << std::endl;
@@ -394,9 +620,10 @@ std::map<std::string, long> process_candidate(
     for (int sub_contract_idx = 0;
          sub_contract_idx < contract_num_sub_contracts(cit.function_name);
          sub_contract_idx++) {
-      klee::Query sat_query(call_constraints,
-                            subcontract_constraints[std::make_pair(
-                                cit.function_name, sub_contract_idx)]);
+      klee::Query sat_query(
+          call_constraints,
+          subcontract_constraints
+              [std::make_pair(cit.function_name, sub_contract_idx)]);
       bool result = false;
       bool success = solver->mayBeTrue(sat_query, result);
       assert(success);
@@ -488,7 +715,6 @@ int main(int argc, char **argv, char **envp) {
   LOAD_SYMBOL(contract, contract_init);
   LOAD_SYMBOL(contract, contract_get_user_variables);
   LOAD_SYMBOL(contract, contract_get_optimization_variables);
-  LOAD_SYMBOL(contract, contract_get_symbols);
   LOAD_SYMBOL(contract, contract_get_contracts);
   LOAD_SYMBOL(contract, contract_has_contract);
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
@@ -539,19 +765,20 @@ int main(int argc, char **argv, char **envp) {
   /* Getting all subcontracts */
 
   std::map<std::pair<std::string, int>, std::string>
-      subcontract_constraints_str;
+  subcontract_constraints_str;
   for (auto function_name : contract_get_contracts()) {
     for (int sub_contract_idx = 0;
          sub_contract_idx < contract_num_sub_contracts(function_name);
          sub_contract_idx++) {
-      subcontract_constraints_str[std::make_pair(function_name,
-                                                 sub_contract_idx)] =
-          contract_get_subcontract_constraints(function_name, sub_contract_idx);
+      subcontract_constraints_str
+          [std::make_pair(function_name, sub_contract_idx)] =
+              contract_get_subcontract_constraints(function_name,
+                                                   sub_contract_idx);
     }
   }
 
-  std::vector<std::string>
-      expressions_str; /* All expressions for UVs, OVs, subcontracts */
+  std::vector<std::string> expressions_str; /* All expressions for UVs, OVs,
+                                               subcontracts */
   for (auto vit : user_variables_str) {
     expressions_str.push_back(vit.second);
   }
@@ -565,17 +792,17 @@ int main(int argc, char **argv, char **envp) {
   }
 
   std::deque<klee::ref<klee::Expr> > expressions;
-  call_path_t *call_path = load_call_path(
-      InputCallPathFile, contract_get_symbols(), expressions_str, expressions);
+  call_path_t *call_path =
+      load_call_path(InputCallPathFile, expressions_str, expressions, contract);
 
-  std::map<std::string, klee::ref<klee::Expr> > user_variables;
+  std::map<initial_var_t, klee::ref<klee::Expr> > user_variables;
   for (auto vit : user_variables_str) {
     assert(!expressions.empty());
-    user_variables[vit.first] = expressions.front();
+    user_variables[(initial_var_t) { vit.first, "", 0 }] = expressions.front();
     expressions.pop_front();
   }
   std::map<std::string, std::set<klee::ref<klee::Expr> > >
-      optimization_variables;
+  optimization_variables;
   for (auto vit : optimization_variables_str) {
     for (auto cit : vit.second) {
       assert(!expressions.empty());
@@ -590,19 +817,22 @@ int main(int argc, char **argv, char **envp) {
   }
   assert(expressions.empty());
 
-  std::map<std::string, std::set<klee::ref<klee::Expr> >::iterator>
-      candidate_iterators;
+  std::map<initial_var_t, std::set<klee::ref<klee::Expr> >::iterator>
+  candidate_iterators;
   for (auto &it :
-       optimization_variables) { /*This tries to set the value of the OVs? */
-    if (!overriden_user_variables.count(it.first)) {
-      candidate_iterators[it.first] = it.second.begin();
+       call_path->initial_extra_vars) { /*This tries to set the value of the
+                                           OVs? */
+    if (!overriden_user_variables.count(it.first.name) &&
+        optimization_variables.count(it.first.name)) {
+      candidate_iterators[it.first] =
+          optimization_variables[it.first.name].begin();
     }
   }
 
 #ifdef DEBUG
   std::cerr << "Debug: Binding user variables to:" << std::endl;
   for (auto vit : user_variables) {
-    std::cerr << "Debug:   " << vit.first << " = " << std::flush;
+    std::cerr << "Debug:   " << vit.first.name << " = " << std::flush;
     vit.second->print(llvm::errs());
     llvm::errs().flush();
     std::cerr << std::endl;
@@ -611,17 +841,17 @@ int main(int argc, char **argv, char **envp) {
 
   std::map<std::string, long> max_performance;
   std::map<std::string, std::map<std::string, std::set<int> > > final_cstate;
-  std::map<std::string, std::set<klee::ref<klee::Expr> >::iterator>::iterator
-      pos;
+  std::map<initial_var_t, std::set<klee::ref<klee::Expr> >::iterator>::iterator
+  pos;
   do {
-    std::map<std::string, klee::ref<klee::Expr> > vars = user_variables;
+    std::map<initial_var_t, klee::ref<klee::Expr> > vars = user_variables;
 
     for (auto it : candidate_iterators) {
       vars[it.first] = *it.second;
     }
 
     std::map<std::string, std::map<std::string, std::set<int> > >
-        candidate_cstate;
+    candidate_cstate;
     std::map<std::string, long> performance =
         process_candidate(call_path, contract, vars, candidate_cstate);
     for (auto metric : performance) {
@@ -634,14 +864,17 @@ int main(int argc, char **argv, char **envp) {
     }
 
     pos = candidate_iterators.begin();
-    while (++(pos->second) == optimization_variables[pos->first].end()) {
-      if (++pos == candidate_iterators.end()) {
-        break;
-      }
+    if (!candidate_iterators.empty()) {
+      while (++(pos->second) == optimization_variables[pos->first.name].end()) {
+        if (++pos == candidate_iterators.end()) {
+          break;
+        }
 
-      for (auto reset_pos = candidate_iterators.begin(); reset_pos != pos;
-           reset_pos++) {
-        reset_pos->second = optimization_variables[reset_pos->first].begin();
+        for (auto reset_pos = candidate_iterators.begin(); reset_pos != pos;
+             reset_pos++) {
+          reset_pos->second =
+              optimization_variables[reset_pos->first.name].begin();
+        }
       }
     }
   } while (pos != candidate_iterators.end());
