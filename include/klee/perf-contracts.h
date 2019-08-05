@@ -55,6 +55,13 @@ contract_get_optimization_variables();
 std::set<std::string> contract_get_symbols();
 
 /**
+ * Gets the size of potential new symbols.
+ *
+ * @returns The size of the named symbol.
+ */
+int contract_get_symbol_size(std::string symbol_name);
+
+/**
  * Gets a set of functions with contracts.
  *
  * @returns the set of function with contracts.

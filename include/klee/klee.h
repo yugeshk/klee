@@ -200,6 +200,21 @@ KLEE_TRACE_PARAM_PROTO(_u32, uint32_t);
 KLEE_TRACE_PARAM_PROTO(_i64, int64_t);
 KLEE_TRACE_PARAM_PROTO(_u64, int64_t);
 #undef KLEE_TRACE_PARAM_PROTO
+
+#define KLEE_TRACE_VAL_PROTO(suffix, type)                                     \
+  void klee_trace_extra_val##suffix(type param, const char *name,              \
+                                    const char *prefix)
+KLEE_TRACE_VAL_PROTO(f, float);
+KLEE_TRACE_VAL_PROTO(d, double);
+KLEE_TRACE_VAL_PROTO(l, long);
+KLEE_TRACE_VAL_PROTO(ll, long long);
+KLEE_TRACE_VAL_PROTO(_u16, uint16_t);
+KLEE_TRACE_VAL_PROTO(_i32, int32_t);
+KLEE_TRACE_VAL_PROTO(_u32, uint32_t);
+KLEE_TRACE_VAL_PROTO(_i64, int64_t);
+KLEE_TRACE_VAL_PROTO(_u64, int64_t);
+#undef KLEE_TRACE_VAL_PROTO
+
 void klee_trace_param_ptr(void *ptr, int width, const char *name);
 typedef enum TracingDirection {
   TD_NONE = 0,
@@ -233,7 +248,7 @@ void klee_trace_param_ptr_nested_field_directed(void *ptr, int base_offset,
 void klee_trace_ret_ptr_nested_field(int base_offset, int offset, int width,
                                      char *name);
 void klee_trace_extra_ptr(void *ptr, int width, char *name, char *type,
-                          TracingDirection td);
+                          char *prefix, TracingDirection td);
 void klee_trace_extra_ptr_field(void *ptr, int offset, int width, char *name,
                                 TracingDirection td);
 void klee_trace_extra_ptr_field_just_ptr(void *ptr, int offset, int width,
@@ -257,13 +272,25 @@ void klee_dump_constraints();
 
 void klee_possibly_havoc(void *ptr, int width, char *name);
 
+int traced_variable_type(char *variable, char **type);
+
 #define PERF_MODEL_BRANCH(param, val1, val2)                                   \
   if (param) {                                                                 \
-    param = val1;                                                                 \
+    param = val1;                                                              \
   } else {                                                                     \
-    param = val2;                                                                 \
+    param = val2;                                                              \
     /* Setting it to a different value so compiler doesn't eliminate branch */ \
   }
+
+#define TRACE_VAR(var, name)                                                   \
+  klee_assert(traced_variable_type(name, &prefix) &&                           \
+              "Prefix for Variable not found");                                \
+  klee_trace_extra_ptr(&var, sizeof(var), name, "type", prefix, TD_BOTH);
+
+#define TRACE_VAL(var, name, type)                                             \
+  klee_assert(traced_variable_type(name, &prefix) &&                           \
+              "Prefix for Variable not found");                                \
+  klee_trace_extra_val##type(var, name, prefix);
 
 #ifdef __cplusplus
 }
