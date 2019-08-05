@@ -480,44 +480,46 @@ std::map<std::string, long> process_candidate(
         if (vit.first.name == var.first.name) {
           std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> > replacements;
           for (auto extra_var : call_path->initial_extra_vars) {
-            std::string specific_initial_name =
-                "initial_" + extra_var.first.name + "_" +
-                extra_var.first.ds_id + "_" +
-                std::to_string(extra_var.first.occurence);
-            assert(call_path->arrays.count(specific_initial_name));
-            const klee::Array *specific_array =
-                call_path->arrays[specific_initial_name];
-            assert(specific_array && "Initial variable not found");
-            klee::UpdateList specific_ul(specific_array, 0);
-            klee::ref<klee::Expr> specific_read_expr = exprBuilder->Read(
-                specific_ul, exprBuilder->Constant(0, klee::Expr::Int32));
-            for (unsigned offset = 1; offset < specific_array->getSize();
-                 offset++) {
-              specific_read_expr = exprBuilder->Concat(
-                  exprBuilder->Read(
-                      specific_ul,
-                      exprBuilder->Constant(offset, klee::Expr::Int32)),
-                  specific_read_expr);
-            }
+            if (extra_var.first.ds_id == vit.first.ds_id) {
+              std::string specific_initial_name =
+                  "initial_" + extra_var.first.name + "_" + vit.first.ds_id +
+                  "_" + std::to_string(vit.first.occurence);
+              assert(call_path->arrays.count(specific_initial_name));
+              const klee::Array *specific_array =
+                  call_path->arrays[specific_initial_name];
+              assert(specific_array && "Initial variable not found");
+              klee::UpdateList specific_ul(specific_array, 0);
+              klee::ref<klee::Expr> specific_read_expr = exprBuilder->Read(
+                  specific_ul, exprBuilder->Constant(0, klee::Expr::Int32));
+              for (unsigned offset = 1; offset < specific_array->getSize();
+                   offset++) {
+                specific_read_expr = exprBuilder->Concat(
+                    exprBuilder->Read(
+                        specific_ul,
+                        exprBuilder->Constant(offset, klee::Expr::Int32)),
+                    specific_read_expr);
+              }
 
-            std::string general_initial_name =
-                "initial_" + extra_var.first.name;
-            assert(call_path->arrays.count(general_initial_name));
-            const klee::Array *general_array =
-                call_path->arrays[general_initial_name];
-            assert(general_array && "Initial variable not found");
-            klee::UpdateList general_ul(general_array, 0);
-            klee::ref<klee::Expr> general_read_expr = exprBuilder->Read(
-                general_ul, exprBuilder->Constant(0, klee::Expr::Int32));
-            for (unsigned offset = 1; offset < general_array->getSize();
-                 offset++) {
-              general_read_expr = exprBuilder->Concat(
-                  exprBuilder->Read(general_ul, exprBuilder->Constant(
-                                                    offset, klee::Expr::Int32)),
-                  general_read_expr);
-            }
+              std::string general_initial_name =
+                  "initial_" + extra_var.first.name;
+              assert(call_path->arrays.count(general_initial_name));
+              const klee::Array *general_array =
+                  call_path->arrays[general_initial_name];
+              assert(general_array && "Initial variable not found");
+              klee::UpdateList general_ul(general_array, 0);
+              klee::ref<klee::Expr> general_read_expr = exprBuilder->Read(
+                  general_ul, exprBuilder->Constant(0, klee::Expr::Int32));
+              for (unsigned offset = 1; offset < general_array->getSize();
+                   offset++) {
+                general_read_expr = exprBuilder->Concat(
+                    exprBuilder->Read(
+                        general_ul,
+                        exprBuilder->Constant(offset, klee::Expr::Int32)),
+                    general_read_expr);
+              }
 
-            replacements[general_read_expr] = specific_read_expr;
+              replacements[general_read_expr] = specific_read_expr;
+            }
           }
 
           klee::ref<klee::Expr> specific_var_expr =
