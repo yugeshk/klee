@@ -139,8 +139,7 @@ def main():
                         output.write(text)
                         output.write("\n")
 
-
-
+                        
 def find_nth(haystack, needle, n):
     start = haystack.find(needle)
     while start >= 0 and n > 1:
