@@ -11,3 +11,5 @@ grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{p
 python $KLEE_DIR/scripts/contract-tree/build_tree.py tc_tags combined_perf.txt "execution cycles" tree.txt perf_var
 
 popd
+
+dot $TRACES_DIR/tree.dot -T png -o tree.png
