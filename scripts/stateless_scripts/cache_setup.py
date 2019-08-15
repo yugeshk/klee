@@ -79,7 +79,7 @@ def print_cache_contents(op_file):
         for x in range(len(cache_ages)):
             for y in range(len(cache_ages[x])):
                 if(cache_ages[x][y] < set_associativity):
-                    output.write(str(hex(cache_contents[x][y]))+"\n")
+                    output.write(str(hex(cache_contents[x][y])).upper()+"\n")
 
 
 main()
