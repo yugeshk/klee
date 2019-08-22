@@ -58,6 +58,8 @@ def main():
                         index = cache_contents[set_no].index(block_no)
                         if cache_ages[set_no][index] < set_associativity:
                             output.write("Hit\n")
+                        # else:
+                        #     output.write("Miss\n")
                     else:
                         cache_contents[set_no].append(block_no)
                         cache_ages[set_no].append(None)
