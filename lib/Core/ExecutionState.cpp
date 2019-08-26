@@ -81,7 +81,7 @@ ExecutionState::ExecutionState(KFunction *kf)
   pushFrame(0, kf);
 }
 
-ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
+ExecutionState::ExecutionState(const std::vector<ref<Expr>> &assumptions)
     : executionStateForLoopInProcess(0), constraints(assumptions),
       queryCost(0.), ptreeNode(0), relevantSymbols(), doTrace(true),
       condoneUndeclaredHavocs(false) {}
@@ -295,9 +295,9 @@ bool ExecutionState::merge(const ExecutionState &b) {
       return false;
   }
 
-  std::set<ref<Expr> > aConstraints(constraints.begin(), constraints.end());
-  std::set<ref<Expr> > bConstraints(b.constraints.begin(), b.constraints.end());
-  std::set<ref<Expr> > commonConstraints, aSuffix, bSuffix;
+  std::set<ref<Expr>> aConstraints(constraints.begin(), constraints.end());
+  std::set<ref<Expr>> bConstraints(b.constraints.begin(), b.constraints.end());
+  std::set<ref<Expr>> commonConstraints, aSuffix, bSuffix;
   std::set_intersection(
       aConstraints.begin(), aConstraints.end(), bConstraints.begin(),
       bConstraints.end(),
@@ -310,20 +310,18 @@ bool ExecutionState::merge(const ExecutionState &b) {
                       std::inserter(bSuffix, bSuffix.end()));
   if (DebugLogStateMerge) {
     llvm::errs() << "\tconstraint prefix: [";
-    for (std::set<ref<Expr> >::iterator it = commonConstraints.begin(),
-                                        ie = commonConstraints.end();
+    for (std::set<ref<Expr>>::iterator it = commonConstraints.begin(),
+                                       ie = commonConstraints.end();
          it != ie; ++it)
       llvm::errs() << *it << ", ";
     llvm::errs() << "]\n";
     llvm::errs() << "\tA suffix: [";
-    for (std::set<ref<Expr> >::iterator it = aSuffix.begin(),
-                                        ie = aSuffix.end();
+    for (std::set<ref<Expr>>::iterator it = aSuffix.begin(), ie = aSuffix.end();
          it != ie; ++it)
       llvm::errs() << *it << ", ";
     llvm::errs() << "]\n";
     llvm::errs() << "\tB suffix: [";
-    for (std::set<ref<Expr> >::iterator it = bSuffix.begin(),
-                                        ie = bSuffix.end();
+    for (std::set<ref<Expr>>::iterator it = bSuffix.begin(), ie = bSuffix.end();
          it != ie; ++it)
       llvm::errs() << *it << ", ";
     llvm::errs() << "]\n";
@@ -376,10 +374,10 @@ bool ExecutionState::merge(const ExecutionState &b) {
 
   ref<Expr> inA = ConstantExpr::alloc(1, Expr::Bool);
   ref<Expr> inB = ConstantExpr::alloc(1, Expr::Bool);
-  for (std::set<ref<Expr> >::iterator it = aSuffix.begin(), ie = aSuffix.end();
+  for (std::set<ref<Expr>>::iterator it = aSuffix.begin(), ie = aSuffix.end();
        it != ie; ++it)
     inA = AndExpr::create(inA, *it);
-  for (std::set<ref<Expr> >::iterator it = bSuffix.begin(), ie = bSuffix.end();
+  for (std::set<ref<Expr>>::iterator it = bSuffix.begin(), ie = bSuffix.end();
        it != ie; ++it)
     inB = AndExpr::create(inB, *it);
 
@@ -425,8 +423,8 @@ bool ExecutionState::merge(const ExecutionState &b) {
   }
 
   constraints = ConstraintManager();
-  for (std::set<ref<Expr> >::iterator it = commonConstraints.begin(),
-                                      ie = commonConstraints.end();
+  for (std::set<ref<Expr>>::iterator it = commonConstraints.begin(),
+                                     ie = commonConstraints.end();
        it != ie; ++it)
     constraints.addConstraint(*it);
   constraints.addConstraint(OrExpr::create(inA, inB));
@@ -479,9 +477,9 @@ bool symbolSetsIntersect(const SymbolSet &a, const SymbolSet &b) {
   return false;
 }
 
-std::vector<ref<Expr> >
+std::vector<ref<Expr>>
 ExecutionState::relevantConstraints(SymbolSet symbols) const {
-  std::vector<ref<Expr> > ret;
+  std::vector<ref<Expr>> ret;
   llvm::SmallPtrSet<Expr *, 100> insertedConstraints;
   bool newSymbols = false;
   do {
@@ -543,7 +541,7 @@ void ExecutionState::traceRet() {
     callPath.back().callPlace = stack.back().caller->inst->getDebugLoc();
     callPath.back().f = stack.back().kf->function;
     callPath.back().returned = false;
-    std::vector<ref<Expr> > constrs = relevantConstraints(relevantSymbols);
+    std::vector<ref<Expr>> constrs = relevantConstraints(relevantSymbols);
     callPath.back().callContext.insert(callPath.back().callContext.end(),
                                        constrs.begin(), constrs.end());
   }
@@ -565,7 +563,7 @@ void ExecutionState::traceArgValue(ref<Expr> val, std::string name) {
   argInfo->expr = val;
   argInfo->isPtr = false;
   argInfo->name = name;
-  std::vector<ref<Expr> > constrs =
+  std::vector<ref<Expr>> constrs =
       relevantConstraints(GetExprSymbols::visit(val));
   callPath.back().callContext.insert(callPath.back().callContext.end(),
                                      constrs.begin(), constrs.end());
@@ -588,7 +586,7 @@ void ExecutionState::traceArgPtr(ref<Expr> arg, Expr::Width width,
     SymbolSet indirectSymbols = GetExprSymbols::visit(argInfo->pointee.inVal);
     symbols.insert(indirectSymbols.begin(), indirectSymbols.end());
   }
-  std::vector<ref<Expr> > constrs = relevantConstraints(symbols);
+  std::vector<ref<Expr>> constrs = relevantConstraints(symbols);
   callPath.back().callContext.insert(callPath.back().callContext.end(),
                                      constrs.begin(), constrs.end());
 }
@@ -773,7 +771,7 @@ void ExecutionState::traceExtraPtr(size_t ptr, Expr::Width width,
         ConstantExpr::alloc(ptr, sizeof(size_t) * 8), width, true));
     indirectSymbols = GetExprSymbols::visit(extraPtr->pointee.inVal);
   }
-  std::vector<ref<Expr> > constrs = relevantConstraints(indirectSymbols);
+  std::vector<ref<Expr>> constrs = relevantConstraints(indirectSymbols);
   callPath.back().callContext.insert(callPath.back().callContext.end(),
                                      constrs.begin(), constrs.end());
 }
@@ -849,7 +847,7 @@ void ExecutionState::recordRetConstraints(CallInfo *info) const {
   assert(!callPath.empty() && info->f == stack.back().kf->function);
   SymbolSet symbols = info->computeRetSymbolSet();
 
-  std::vector<ref<Expr> > constrs = relevantConstraints(symbols);
+  std::vector<ref<Expr>> constrs = relevantConstraints(symbols);
   info->returnContext.insert(info->returnContext.end(), constrs.begin(),
                              constrs.end());
 }
@@ -1195,8 +1193,8 @@ CallArg *CallInfo::getCallArgPtrp(ref<Expr> ptr) {
   return 0;
 }
 
-bool equalContexts(const std::vector<ref<Expr> > &a,
-                   const std::vector<ref<Expr> > &b) {
+bool equalContexts(const std::vector<ref<Expr>> &a,
+                   const std::vector<ref<Expr>> &b) {
   // TODO: Structural-only comparison here, ideally we'd ask the solver about it
   if (a.size() != b.size())
     return false;
@@ -1226,26 +1224,65 @@ bool equalContexts(const std::vector<ref<Expr> > &a,
 }
 
 bool CallInfo::eq(const CallInfo &other) const {
-  if (args.size() != other.args.size())
+  int same_name = 0;
+  if (f->getName() == other.f->getName()) {
+    same_name = 1;
+  }
+
+  if (args.size() != other.args.size()) {
+    if (same_name) {
+      std::cout << "Function with name " << f->getName().data()
+                << " differs in args size\n";
+    }
     return false;
-  if (extraPtrs.size() != other.extraPtrs.size())
+  }
+  if (extraPtrs.size() != other.extraPtrs.size()) {
+    if (same_name) {
+      std::cout << "Function with name " << f->getName().data()
+                << " differs in extraPtrs size\n";
+    }
     return false;
+  }
   for (unsigned i = 0; i < args.size(); ++i) {
-    if (!args[i].eq(other.args[i]))
+    if (!args[i].eq(other.args[i])) {
+      if (same_name) {
+        std::cout << "Function with name " << f->getName().data()
+                  << " differs in args value\n";
+      }
       return false;
+    }
   }
   std::map<size_t, CallExtraPtr>::const_iterator i = extraPtrs.begin(),
                                                  e = extraPtrs.end();
   for (; i != e; ++i) {
     std::map<size_t, CallExtraPtr>::const_iterator it =
         other.extraPtrs.find(i->first);
-    if (it == other.extraPtrs.end() || !it->second.eq(i->second))
+    if (it == other.extraPtrs.end() || !it->second.eq(i->second)) {
+      if (same_name) {
+        std::cout << "Function with name " << f->getName().data()
+                  << " differs in extraPtrs\n";
+      }
+
       return false;
+    }
   }
-  return f == other.f && ret.eq(other.ret) &&
-         equalContexts(callContext, other.callContext) &&
-         equalContexts(returnContext, other.returnContext) &&
-         returned == other.returned;
+  bool check = f == other.f && ret.eq(other.ret);
+  if (!check && same_name) {
+    std::cout << "Function with name " << f->getName().data()
+              << " differs in function/return value \n";
+  }
+  if (!check) {
+    return check;
+  }
+
+  check == equalContexts(callContext, other.callContext) &&
+      equalContexts(returnContext, other.returnContext) &&
+      returned == other.returned;
+  if (!check && same_name) {
+    std::cout << "Function with name " << f->getName().data()
+              << " differs in contexts\n";
+  }
+  return check;
 }
 
 bool CallInfo::sameInvocation(const CallInfo *other) const {
