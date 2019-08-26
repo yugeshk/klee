@@ -230,6 +230,7 @@ class KleeHandler;
 struct CallPathTip {
   CallInfo call;
   unsigned path_id;
+  int is_duplicate;
 };
 
 class CallTree {
@@ -246,8 +247,9 @@ public:
       std::list<CallInfo> accumulated_prefix,
       std::list<const std::vector<ref<Expr>> *> accumulated_context,
       KleeHandler *fileOpener);
-  void dumpCallTree(std::vector<unsigned> accumulated_prefix,
-                    llvm::raw_ostream *file);
+  void dumpCallTree(std::vector<CallPathTip> accumulated_prefix,
+                    llvm::raw_ostream *tree_file,
+                    llvm::raw_ostream *calls_file);
   void dumpCallPrefixesSExpr(std::list<CallInfo> accumulated_prefix,
                              KleeHandler *fileOpener);
 
@@ -539,9 +541,10 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         ++m_numGeneratedTests;
       }
 
-      if (DumpCallTracePrefixes || DumpCallTraceTree)
+      if (DumpCallTracePrefixes || DumpCallTraceTree) {
         m_callTree.addCallPath(state.callPath.begin(), state.callPath.end(),
                                id);
+      }
       if (DumpCallTraces) {
         llvm::raw_fd_ostream *trace_file =
             openOutputFile(getTestFilename("call_path", id));
@@ -980,9 +983,12 @@ void KleeHandler::dumpCallPathPrefixes() {
 
 void KleeHandler::dumpCallPathTree() {
   std::string filename = "tree.txt";
-  llvm::raw_ostream *file = this->openOutputFile(filename);
-  m_callTree.dumpCallTree(std::vector<unsigned>(), file);
-  delete file;
+  llvm::raw_ostream *tree_file = this->openOutputFile(filename);
+  filename = "calls.txt";
+  llvm::raw_ostream *calls_file = this->openOutputFile(filename);
+  m_callTree.dumpCallTree(std::vector<CallPathTip>(), tree_file, calls_file);
+  delete tree_file;
+  delete calls_file;
 }
 
 void KleeHandler::dumpCallPath(const ExecutionState &state,
@@ -1164,7 +1170,21 @@ void CallTree::addCallPath(std::vector<CallInfo>::const_iterator path_begin,
   std::vector<CallTree *>::iterator i = children.begin(), ie = children.end();
   for (; i != ie; ++i) {
     if ((*i)->tip.call.eq(*path_begin)) {
-      (*i)->addCallPath(next, path_end, path_id);
+      if (next == path_end) {
+        /* This adds a duplicate child if two paths end
+                                 similarly */
+        assert(tip.is_duplicate == 0 &&
+               "Trying to add child to a duplicate node");
+        children.push_back(new CallTree());
+        CallTree *n = children.back();
+        n->tip.call = *path_begin;
+        n->tip.path_id = path_id;
+        n->tip.is_duplicate = 1;
+        std::cout << "Leaf node for test " << path_id << " is duplicate\n";
+      } else {
+
+        (*i)->addCallPath(next, path_end, path_id);
+      }
       return;
     }
   }
@@ -1172,6 +1192,7 @@ void CallTree::addCallPath(std::vector<CallInfo>::const_iterator path_begin,
   CallTree *n = children.back();
   n->tip.call = *path_begin;
   n->tip.path_id = path_id;
+  n->tip.is_duplicate = 0;
   n->addCallPath(next, path_end, path_id);
 }
 
@@ -1372,24 +1393,32 @@ void CallTree::dumpCallPrefixes(
   }
 }
 
-void CallTree::dumpCallTree(std::vector<unsigned> accumulated_prefix,
-                            llvm::raw_ostream *file) {
+void CallTree::dumpCallTree(std::vector<CallPathTip> accumulated_prefix,
+                            llvm::raw_ostream *tree_file,
+                            llvm::raw_ostream *calls_file) {
 
-  accumulated_prefix.push_back(tip.path_id);
+  accumulated_prefix.push_back(tip);
   std::vector<CallTree *>::iterator ci = children.begin(), cie = children.end();
 
   if (ci == cie) { // Reached leaf node, so print
-    std::vector<unsigned>::iterator pi = accumulated_prefix.begin(),
-                                    pie = accumulated_prefix.end();
-    for (; pi != pie; ++pi) {
-      *file << (*pi) << ",";
+    std::vector<CallPathTip>::iterator pi = accumulated_prefix.begin(),
+                                       pie = accumulated_prefix.end();
+    for (int depth = 0; pi != pie; ++pi, ++depth) {
+
+      *tree_file << (*pi).path_id << ",";
+      if ((*pi).call.returned) {
+        *calls_file << "libVig Call:" << (*pi).path_id << "," << depth << ","
+                    << (*pi).call.f->getName() << "\n";
+        dumpCallInfo((*pi).call, *calls_file);
+      }
     }
-    *file << "\n";
+
+    *tree_file << "\n";
     return;
   }
 
   for (; ci != cie; ++ci) {
-    (*ci)->dumpCallTree(accumulated_prefix, file);
+    (*ci)->dumpCallTree(accumulated_prefix, tree_file, calls_file);
   }
 }
 
