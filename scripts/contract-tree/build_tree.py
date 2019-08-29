@@ -13,7 +13,8 @@ tags_file = sys.argv[1]
 perf_file = sys.argv[2]
 perf_metric = sys.argv[3]
 tree_file = sys.argv[4]
-op_file = sys.argv[5]
+perf_resolution = int(sys.argv[5])
+op_file = sys.argv[6]
 
 
 class MyNode:
@@ -141,6 +142,7 @@ def main():
                     curr_parent.parent = None
 
         # Let's assign tags and performance resolution now
+        unique_tags.add("UNSAT")  # For UNSAT nodes
         for node in list(PostOrderIter(tree_root)):
             if(node.is_leaf):
                 if(node.name in traces_perf):  # Trace must be SAT to have a perf
@@ -148,6 +150,7 @@ def main():
                 else:
                     node.perf = -1
                     node.sat = 0
+                    node.add_tag("UNSAT")
 
                 if(node.name in traces_tags):
                     # For some reason the setter doesn't work directly :(
@@ -158,17 +161,26 @@ def main():
                 node.perf = get_perf_variability(node)
                 assign_tags(node)
 
+        unique_tags.remove("UNSAT")  # For UNSAT nodes. Else it interferes
+
+        # Now, let's coalesce nodes with no perf difference!
+        for node in list(PostOrderIter(tree_root)):
+            if(not node.is_leaf and node.perf < perf_resolution):
+                children = list(node.children)
+                for child in children:
+                    child.parent = None
+
+        # Get perf variability for each tag
         for tag in unique_tags:
             perf_var[tag] = set()
 
-        # Get perf variability for each tag
         for trace, perf in traces_perf.items():
             if trace in traces_tags:
                 for tag in traces_tags[trace]:
                     perf_var[tag].add(perf)
 
         with open(op_file, "w") as op:
-            op.write("#Tag #Perf Variability\n")
+            op.write("#Tag #Perf-Variability\n")
             for tag in unique_tags:
                 op.write("%s %d\n" %
                          (tag, (max(perf_var[tag]) - min(perf_var[tag]))))
@@ -203,7 +215,7 @@ def get_perf_variability(node):
 
 
 def node_colour_fn(node):
-    if(node.is_leaf):
+    if(node.name.startswith("test")):  # Cannot use is_leaf because of perf_var coalescing
         colour = "fillcolor = red,fontcolor = white"
     else:
         colour = "fillcolor = white,fontcolor = black"
@@ -211,11 +223,11 @@ def node_colour_fn(node):
 
 
 def node_identifier_fn(node):
-    if(node.is_leaf):
+    if(node.name.startswith("test")):  # Cannot use is_leaf because of perf_var coalescing
+        identifier = '%s' % (node.name)
         if (node.sat):
-            identifier = '%s\nPerf = %s' % (node.name, node.perf)
-        else:
-            identifier = '%s\nUNSAT' % (node.name)
+            identifier += '\nPerf = %s' % (node.perf)
+
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
             node.name, node.id, node.depth, node.perf)
