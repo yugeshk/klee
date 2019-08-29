@@ -57,7 +57,7 @@ dchain2_allocate
 dchain2_allocate_new_index
 dchain2_rejuvenate_index
 dchain2_expire_one_index
-lb_find_preferred_backend
+lb_find_preferred_available_backend
 dchain_is_index_allocated
 dchain2_is_index_allocated
 dchain2_make_space
