@@ -1236,13 +1236,7 @@ bool CallInfo::eq(const CallInfo &other) const {
     }
     return false;
   }
-  if (extraPtrs.size() != other.extraPtrs.size()) {
-    if (same_name) {
-      std::cout << "Function with name " << f->getName().data()
-                << " differs in extraPtrs size\n";
-    }
-    return false;
-  }
+
   for (unsigned i = 0; i < args.size(); ++i) {
     if (!args[i].eq(other.args[i])) {
       if (same_name) {
@@ -1252,20 +1246,7 @@ bool CallInfo::eq(const CallInfo &other) const {
       return false;
     }
   }
-  std::map<size_t, CallExtraPtr>::const_iterator i = extraPtrs.begin(),
-                                                 e = extraPtrs.end();
-  for (; i != e; ++i) {
-    std::map<size_t, CallExtraPtr>::const_iterator it =
-        other.extraPtrs.find(i->first);
-    if (it == other.extraPtrs.end() || !it->second.eq(i->second)) {
-      if (same_name) {
-        std::cout << "Function with name " << f->getName().data()
-                  << " differs in extraPtrs\n";
-      }
 
-      return false;
-    }
-  }
   bool check = f == other.f && ret.eq(other.ret);
   if (!check && same_name) {
     std::cout << "Function with name " << f->getName().data()
