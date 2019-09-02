@@ -731,9 +731,7 @@ bool dumpCallInfo(const CallInfo &ci, llvm::raw_ostream &file) {
   for (std::vector<CallExtraVal>::const_iterator i = ci.extraVals.begin(),
                                                  e = ci.extraVals.end();
        i != e; ++i) {
-    const CallExtraVal *extra_val = &(*i);
-    file << "extra:" << extra_val->prefix << ":" << extra_val->name << ":"
-         << *extra_val->expr << "\n";
+    file << "extra:" << i->prefix << ":" << i->name << ":" << *i->expr << "\n";
   }
 
   for (std::map<size_t, CallExtraPtr>::const_iterator i = ci.extraPtrs.begin(),
