@@ -37,10 +37,8 @@ dmap_decrease_occupancy
 dmap_lowerbound_on_occupancy
 dmap_occupancy_p
 vector_allocate
-vector_borrow_full
-vector_borrow_half
-vector_return_full
-vector_return_half
+vector_borrow
+vector_return
 vector_set_layout
 vector_reset
 handle_packet_timestamp
