@@ -755,6 +755,13 @@ bool dumpCallInfo(const CallInfo &ci, llvm::raw_ostream &file) {
       file << "]\n";
     }
   }
+  for (std::vector<CallExtraFPtr>::const_iterator i = ci.extraFPtrs.begin(),
+                                                  e = ci.extraFPtrs.end();
+       i != e; ++i) {
+    file << "extra:" << i->prefix << ":" << i->name << ": &" << i->ptr;
+    file << " = &[" << i->inVal << " -> " << i->outVal << "]\n";
+  }
+
   return true;
 }
 
@@ -1002,6 +1009,10 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
       if (e.second.pointee.doTraceValueOut) {
         evalExprs.push_back(e.second.pointee.outVal);
       }
+    }
+    for (auto e : ci.extraFPtrs) {
+      evalExprs.push_back(e.inVal);
+      evalExprs.push_back(e.outVal);
     }
   }
 

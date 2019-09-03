@@ -155,6 +155,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_trace_extra_ptr_nested_field", handleTraceExtraPtrNestedField, false),
   add("klee_trace_extra_ptr_nested_nested_field",
       handleTraceExtraPtrNestedNestedField, false),
+  add("klee_trace_extra_fptr", handleTraceExtraFPtr, false),
   add("klee_forget_all", handleForgetAll, false),
   add("klee_induce_invariants", handleInduceInvariants, true),
   add("klee_forbid_access", handleForbidAccess, false),
@@ -1175,6 +1176,33 @@ void SpecialFunctionHandler::handleTraceExtraPtrFieldJustPtr
   width = width * 8;//Convert to bits.
   size_t ptr = (cast<ConstantExpr>(arguments[0]))->getZExtValue();
   state.traceExtraPtrField(ptr, offset, width, name, false, false);
+}
+
+void SpecialFunctionHandler::handleTraceExtraFPtr(ExecutionState &state,
+                                                 KInstruction *target,
+                                                 std::vector<ref<Expr> >
+                                                 &arguments) {
+  assert(isa<klee::ConstantExpr>(arguments[1]) && "Width must be a static constant.");
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  std::string name = readStringAtAddress(state, arguments[2]);
+  std::string type = readStringAtAddress(state, arguments[3]);
+  std::string prefix = readStringAtAddress(state, arguments[4]);
+
+  bool trace_in = true, trace_out = true;
+  size_t direction = (cast<klee::ConstantExpr>(arguments[5]))->getZExtValue();
+  switch(direction) {
+    case 0: trace_in = false; trace_out = false; break;
+    case 1: trace_in = true;  trace_out = false; break;
+    case 2: trace_in = false; trace_out = true; break;
+    case 3: trace_in = true;  trace_out = true; break;
+    default:
+      executor.terminateStateOnError
+        (state, "Unrecognized tracing direction",
+        Executor::User);
+      return;
+  }
+  state.traceExtraFPtr(arguments[0], width, name, type, prefix, trace_in, trace_out);
 }
 
 void SpecialFunctionHandler::handleTraceParamPtrFieldJustPtr

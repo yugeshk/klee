@@ -138,6 +138,15 @@ struct CallExtraPtr {
   bool eq(const CallExtraPtr &other) const;
 };
 
+struct CallExtraFPtr {
+  size_t ptr;
+  ref<Expr> inVal, outVal;
+  Expr::Width width;
+  llvm::Function *funPtr;
+  std::string name;
+  std::string prefix;
+};
+
 // TODO: Store assumptions increment as well. it is an important part of the
 // call
 // these assumptions allow then to correctly match and distinguish call path
@@ -147,11 +156,12 @@ struct CallInfo {
   std::vector<CallArg> args;
   std::map<size_t, CallExtraPtr> extraPtrs;
   std::vector<CallExtraVal> extraVals;
+  std::vector<CallExtraFPtr> extraFPtrs;
 
   RetVal ret;
   bool returned;
-  std::vector<ref<Expr> > callContext;
-  std::vector<ref<Expr> > returnContext;
+  std::vector<ref<Expr>> callContext;
+  std::vector<ref<Expr>> returnContext;
   llvm::DebugLoc callPlace;
 
   CallArg *getCallArgPtrp(ref<Expr> ptr);
@@ -292,7 +302,7 @@ public:
   bool forkDisabled;
 
   /// @brief Set containing which lines in which files are covered by this state
-  std::map<const std::string *, std::set<unsigned> > coveredLines;
+  std::map<const std::string *, std::set<unsigned>> coveredLines;
 
   /// @brief Pointer to the process tree of the current state
   PTreeNode *ptreeNode;
@@ -300,7 +310,7 @@ public:
   /// @brief Ordered list of symbolics: used to generate test cases.
   //
   // FIXME: Move to a shared list structure (not critical).
-  std::vector<std::pair<const MemoryObject *, const Array *> > symbolics;
+  std::vector<std::pair<const MemoryObject *, const Array *>> symbolics;
 
   /// @brief The list of possibly havoced memory locations with their names
   ///  and values placed at the last havoc event.
@@ -335,7 +345,7 @@ public:
   void addWritesIntercept(uint64_t addr, std::string writer);
 
   // The objects handling the klee_open_merge calls this state ran through
-  std::vector<ref<MergeHandler> > openMergeStack;
+  std::vector<ref<MergeHandler>> openMergeStack;
 
 private:
   ExecutionState() : ptreeNode(0) {}
@@ -350,7 +360,7 @@ public:
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
-  ExecutionState(const std::vector<ref<Expr> > &assumptions);
+  ExecutionState(const std::vector<ref<Expr>> &assumptions);
 
   ExecutionState(const ExecutionState &state);
 
@@ -396,6 +406,9 @@ public:
                                       int base_offset, int offset,
                                       Expr::Width width, std::string name,
                                       bool trace_in, bool trace_out);
+  void traceExtraFPtr(ref<Expr> ptr, Expr::Width width, std::string name,
+                      std::string type, std::string prefix, bool trace_in,
+                      bool trace_out);
   void traceRetPtrField(int offset, Expr::Width width, std::string name,
                         bool doTraceValue);
   void traceRetPtrNestedField(int base_offset, int offset, Expr::Width width,
@@ -410,7 +423,7 @@ public:
                                           llvm::BasicBlock *src,
                                           TimingSolver *solver,
                                           bool *terminate);
-  std::vector<ref<Expr> > relevantConstraints(SymbolSet symbols) const;
+  std::vector<ref<Expr>> relevantConstraints(SymbolSet symbols) const;
   void terminateState(ExecutionState **replace);
   void induceInvariantsForThisLoop(KInstruction *target);
   void startInvariantSearch();

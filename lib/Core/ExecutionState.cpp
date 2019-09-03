@@ -23,6 +23,7 @@
 #include "klee/LoopAnalysis.h"
 
 #include "klee/Expr.h"
+#include "klee/ExprBuilder.h"
 
 #include "Memory.h"
 #include "llvm/DebugInfo.h"
@@ -797,6 +798,47 @@ void ExecutionState::traceExtraPtrField(size_t ptr, int offset,
   descr.doTraceValueIn = trace_in;
   descr.doTraceValueOut = trace_out;
   extraPtr->pointee.fields[offset] = descr;
+}
+
+void ExecutionState::traceExtraFPtr(ref<Expr> ptr, Expr::Width width,
+                                    std::string name, std::string type,
+                                    std::string prefix, bool trace_in,
+                                    bool trace_out) {
+  traceRet();
+  callPath.back().extraFPtrs.push_back(CallExtraFPtr());
+  CallExtraFPtr *extraFPtr = &callPath.back().extraFPtrs.back();
+  extraFPtr->ptr = (cast<ConstantExpr>(ptr))->getZExtValue();
+  extraFPtr->name = name;
+  extraFPtr->prefix = prefix;
+  extraFPtr->width = width;
+  ref<klee::ConstantExpr> address = cast<klee::ConstantExpr>(ptr);
+  extraFPtr->funPtr = (Function *)address->getZExtValue();
+
+  uint32_t fn_id = 0;
+  std::string fn_name = extraFPtr->funPtr->getName();
+  if (name == "map_hash") {
+    if (fn_name == "FlowId_hash")
+      fn_id = 1;
+    else if (fn_name == "ether_addr_hash")
+      fn_id = 2;
+    else if (fn_name == "lb_flow_hash")
+      fn_id = 3;
+    else if (fn_name == "lb_ip_hash")
+      fn_id = 4;
+  } else if (name == "map_key_eq") {
+    if (fn_name == "FlowId_eq")
+      fn_id = 1;
+    else if (fn_name == "ether_addr_eq")
+      fn_id = 2;
+    else if (fn_name == "lb_flow_equality")
+      fn_id = 3;
+    else if (fn_name == "lb_ip_equality")
+      fn_id = 4;
+  }
+  assert(fn_id > 0 && "Unknown hash function");
+  klee::ExprBuilder *Builder = klee::createDefaultExprBuilder();
+  extraFPtr->inVal = extraFPtr->outVal =
+      Builder->Constant(fn_id, extraFPtr->width);
 }
 
 void ExecutionState::traceRetPtrField(int offset, Expr::Width width,

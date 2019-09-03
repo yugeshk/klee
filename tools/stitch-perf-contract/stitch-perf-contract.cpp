@@ -19,18 +19,18 @@
 #include <iostream>
 #include <klee/Constraints.h>
 #include <klee/Solver.h>
-#include <vector>
-#include <stdlib.h>
 #include <klee/util/ExprVisitor.h>
+#include <stdlib.h>
+#include <vector>
 
 #define DEBUG
 
 namespace {
 llvm::cl::opt<std::string>
-ContractLib("contract",
-            llvm::cl::desc("A performance contract library to load that "
-                           "describes the data structure performance."),
-            llvm::cl::Required);
+    ContractLib("contract",
+                llvm::cl::desc("A performance contract library to load that "
+                               "describes the data structure performance."),
+                llvm::cl::Required);
 
 llvm::cl::opt<std::string> UserVariables(
     "user-vars",
@@ -44,8 +44,8 @@ llvm::cl::opt<std::string> InputCallPathFile(llvm::cl::desc("<call path>"),
 typedef struct {
   std::string function_name;
   std::string ds_id;
-  std::map<std::string, std::pair<klee::ref<klee::Expr>,
-                                  klee::ref<klee::Expr> > > extra_vars;
+  std::map<std::string, std::pair<klee::ref<klee::Expr>, klee::ref<klee::Expr>>>
+      extra_vars;
 } call_t;
 
 typedef struct {
@@ -71,18 +71,18 @@ typedef struct {
   klee::ConstraintManager constraints;
   std::vector<call_t> calls;
   std::map<std::string, const klee::Array *> arrays;
-  std::map<initial_var_t, klee::ref<klee::Expr> > initial_extra_vars;
+  std::map<initial_var_t, klee::ref<klee::Expr>> initial_extra_vars;
   klee::ref<klee::Expr> incoming_packet;
   klee::ref<klee::Expr> outgoing_packet;
   std::map<std::string, std::string> tags;
 } call_path_t;
 
-std::map<std::pair<std::string, int>, klee::ref<klee::Expr> >
-subcontract_constraints;
+std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
+    subcontract_constraints;
 
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
-                            std::deque<klee::ref<klee::Expr> > &expressions,
+                            std::deque<klee::ref<klee::Expr>> &expressions,
                             void *contract) {
   LOAD_SYMBOL(contract, contract_get_symbol_size);
   LOAD_SYMBOL(contract, contract_get_symbols);
@@ -112,9 +112,9 @@ call_path_t *load_call_path(std::string file_name,
     std::string array_dsid;
 
     std::string kQuery;
-    std::vector<klee::ref<klee::Expr> > exprs;
+    std::vector<klee::ref<klee::Expr>> exprs;
     std::set<std::string>
-    declared_arrays; /* Set of all arrays declared in the kQuery */
+        declared_arrays; /* Set of all arrays declared in the kQuery */
 
     int parenthesis_level = 0;
 
@@ -298,13 +298,12 @@ call_path_t *load_call_path(std::string file_name,
                 assert(exprs.size() >= 2 && "Not enough expression in kQuery.");
                 call_path->calls.back().extra_vars[extra_name] =
                     std::make_pair(exprs[0], exprs[1]);
-                if (!call_path->initial_extra_vars.count(
-                         (initial_var_t) { extra_name,
-                                           call_path->calls.back().ds_id,
-                                           extra_occurence })) {
-                  call_path->initial_extra_vars[(initial_var_t) {
-                    extra_name, call_path->calls.back().ds_id, extra_occurence
-                  }] = exprs[0];
+                if (!call_path->initial_extra_vars.count((initial_var_t){
+                        extra_name, call_path->calls.back().ds_id,
+                        extra_occurence})) {
+                  call_path->initial_extra_vars[(initial_var_t){
+                      extra_name, call_path->calls.back().ds_id,
+                      extra_occurence}] = exprs[0];
                 }
                 exprs.erase(exprs.begin(), exprs.begin() + 2);
               }
@@ -387,9 +386,7 @@ call_path_t *load_call_path(std::string file_name,
         call_path->tags[name] = value;
       } break;
 
-      default: {
-        assert(false && "Invalid call path file.");
-      } break;
+      default: { assert(false && "Invalid call path file."); } break;
       }
     }
   } while (false);
@@ -400,15 +397,15 @@ call_path_t *load_call_path(std::string file_name,
 namespace {
 class ExprReplaceVisitor : public klee::ExprVisitor {
 private:
-  const std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> > &replacements;
+  const std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> &replacements;
 
 public:
   ExprReplaceVisitor(const std::map<klee::ref<klee::Expr>,
-                                    klee::ref<klee::Expr> > &_replacements)
+                                    klee::ref<klee::Expr>> &_replacements)
       : klee::ExprVisitor(true), replacements(_replacements) {}
 
   klee::ExprVisitor::Action visitExprPost(const klee::Expr &e) {
-    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> >::const_iterator it =
+    std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>>::const_iterator it =
         replacements.find(klee::ref<klee::Expr>(const_cast<klee::Expr *>(&e)));
     if (it != replacements.end()) {
       return klee::ExprVisitor::Action::changeTo(it->second);
@@ -417,12 +414,12 @@ public:
     }
   }
 };
-}
+} // namespace
 
 std::map<std::string, long> process_candidate(
     call_path_t *call_path, void *contract,
-    std::map<initial_var_t, klee::ref<klee::Expr> > vars,
-    std::map<std::string, std::map<std::string, std::set<int> > > &cstate) {
+    std::map<initial_var_t, klee::ref<klee::Expr>> vars,
+    std::map<std::string, std::map<std::string, std::set<int>>> &cstate) {
   LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_has_contract);
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
@@ -478,7 +475,7 @@ std::map<std::string, long> process_candidate(
     if (var.first.ds_id == "" && var.first.occurence == 0) {
       for (auto vit : call_path->initial_extra_vars) {
         if (vit.first.name == var.first.name) {
-          std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr> > replacements;
+          std::map<klee::ref<klee::Expr>, klee::ref<klee::Expr>> replacements;
           for (auto extra_var : call_path->initial_extra_vars) {
             if (extra_var.first.ds_id == vit.first.ds_id) {
               std::string specific_initial_name =
@@ -622,10 +619,9 @@ std::map<std::string, long> process_candidate(
     for (int sub_contract_idx = 0;
          sub_contract_idx < contract_num_sub_contracts(cit.function_name);
          sub_contract_idx++) {
-      klee::Query sat_query(
-          call_constraints,
-          subcontract_constraints
-              [std::make_pair(cit.function_name, sub_contract_idx)]);
+      klee::Query sat_query(call_constraints,
+                            subcontract_constraints[std::make_pair(
+                                cit.function_name, sub_contract_idx)]);
       bool result = false;
       bool success = solver->mayBeTrue(sat_query, result);
       assert(success);
@@ -761,21 +757,20 @@ int main(int argc, char **argv, char **envp) {
 
   /* Getting OVs */
 
-  std::map<std::string, std::set<std::string> > optimization_variables_str =
+  std::map<std::string, std::set<std::string>> optimization_variables_str =
       contract_get_optimization_variables();
 
   /* Getting all subcontracts */
 
   std::map<std::pair<std::string, int>, std::string>
-  subcontract_constraints_str;
+      subcontract_constraints_str;
   for (auto function_name : contract_get_contracts()) {
     for (int sub_contract_idx = 0;
          sub_contract_idx < contract_num_sub_contracts(function_name);
          sub_contract_idx++) {
-      subcontract_constraints_str
-          [std::make_pair(function_name, sub_contract_idx)] =
-              contract_get_subcontract_constraints(function_name,
-                                                   sub_contract_idx);
+      subcontract_constraints_str[std::make_pair(function_name,
+                                                 sub_contract_idx)] =
+          contract_get_subcontract_constraints(function_name, sub_contract_idx);
     }
   }
 
@@ -793,18 +788,17 @@ int main(int argc, char **argv, char **envp) {
     expressions_str.push_back(cit.second);
   }
 
-  std::deque<klee::ref<klee::Expr> > expressions;
+  std::deque<klee::ref<klee::Expr>> expressions;
   call_path_t *call_path =
       load_call_path(InputCallPathFile, expressions_str, expressions, contract);
 
-  std::map<initial_var_t, klee::ref<klee::Expr> > user_variables;
+  std::map<initial_var_t, klee::ref<klee::Expr>> user_variables;
   for (auto vit : user_variables_str) {
     assert(!expressions.empty());
-    user_variables[(initial_var_t) { vit.first, "", 0 }] = expressions.front();
+    user_variables[(initial_var_t){vit.first, "", 0}] = expressions.front();
     expressions.pop_front();
   }
-  std::map<std::string, std::set<klee::ref<klee::Expr> > >
-  optimization_variables;
+  std::map<std::string, std::set<klee::ref<klee::Expr>>> optimization_variables;
   for (auto vit : optimization_variables_str) {
     for (auto cit : vit.second) {
       assert(!expressions.empty());
@@ -819,11 +813,10 @@ int main(int argc, char **argv, char **envp) {
   }
   assert(expressions.empty());
 
-  std::map<initial_var_t, std::set<klee::ref<klee::Expr> >::iterator>
-  candidate_iterators;
-  for (auto &it :
-       call_path->initial_extra_vars) { /*This tries to set the value of the
-                                           OVs? */
+  std::map<initial_var_t, std::set<klee::ref<klee::Expr>>::iterator>
+      candidate_iterators;
+  for (auto &it : call_path->initial_extra_vars) { /*This tries to set the value
+                                                      of the OVs? */
     if (!overriden_user_variables.count(it.first.name) &&
         optimization_variables.count(it.first.name)) {
       candidate_iterators[it.first] =
@@ -842,18 +835,18 @@ int main(int argc, char **argv, char **envp) {
 #endif
 
   std::map<std::string, long> max_performance;
-  std::map<std::string, std::map<std::string, std::set<int> > > final_cstate;
-  std::map<initial_var_t, std::set<klee::ref<klee::Expr> >::iterator>::iterator
-  pos;
+  std::map<std::string, std::map<std::string, std::set<int>>> final_cstate;
+  std::map<initial_var_t, std::set<klee::ref<klee::Expr>>::iterator>::iterator
+      pos;
   do {
-    std::map<initial_var_t, klee::ref<klee::Expr> > vars = user_variables;
+    std::map<initial_var_t, klee::ref<klee::Expr>> vars = user_variables;
 
     for (auto it : candidate_iterators) {
       vars[it.first] = *it.second;
     }
 
-    std::map<std::string, std::map<std::string, std::set<int> > >
-    candidate_cstate;
+    std::map<std::string, std::map<std::string, std::set<int>>>
+        candidate_cstate;
     std::map<std::string, long> performance =
         process_candidate(call_path, contract, vars, candidate_cstate);
     for (auto metric : performance) {
