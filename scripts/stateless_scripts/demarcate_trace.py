@@ -106,7 +106,7 @@ def main():
 
                     if(stateful or dpdk or verif or time):
                         currently_demarcated = 1
-                        if(current_fn_name == " dmap_get_value" or current_fn_name == " vector_return_half" or current_fn_name == " vector_return_full"):
+                        if(current_fn_name == " dmap_get_value" or current_fn_name == " vector_return" or current_fn_name == " vector_return"):
                             current_fn_name = " klee_forbid_access"  # Jump instead of call
                         if(current_fn_name == " flood"):
                             current_fn_name = "flood"  # Will always fail and exit
@@ -139,7 +139,7 @@ def main():
                         output.write(text)
                         output.write("\n")
 
-                        
+
 def find_nth(haystack, needle, n):
     start = haystack.find(needle)
     while start >= 0 and n > 1:
