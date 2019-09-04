@@ -122,4 +122,55 @@ long contract_get_sub_contract_performance(
 std::map<std::string, std::set<int>>
 contract_get_concrete_state(std::string function_name, int sub_contract_idx,
                             std::map<std::string, long> variables);
+
+/* Common type definition for all perf formula */
+typedef std::map<std::string, long> perf_formula;
+
+/**
+ * Returns performance formula for the given subcontract.
+ *
+ * @param function_name The name of the contract function.
+ * @param sub_contract_idx The sub contract index.
+ * @param variables The assignment for all user-defined and optimization
+ * variables.
+ * @returns The concrete state touched by the function.
+ */
+
+perf_formula contract_get_perf_formula(std::string function_name,
+                                       int sub_contract_idx, std::string metric,
+                                       std::map<std::string, long> variables);
+
+/**
+ * Adds performance formula across function calls within a call path.
+ *
+ * @param accumulator Running total so far
+ * @param addend formula to be added to running total
+ * variables.
+ * @returns Sum of two formulae. This function is commutative
+ */
+
+perf_formula contract_add_perf_formula(perf_formula accumulator,
+                                       perf_formula addend);
+
+/**
+ * Adds performance formula across function calls within a call path.
+ *
+ * @param accumulator Running total so far
+ * @param addend formula to be added to running total
+ * variables.
+ * @returns Sum of two formulae. This function is commutative
+ */
+
+perf_formula contract_add_perf_formula(perf_formula accumulator,
+                                       perf_formula addend);
+
+/**
+ * Converts perf formula into string representation for display
+ *
+ * @param formula: Perf formula to be displayed
+ * variables.
+ * @returns string representation of formula
+ */
+
+std::string contract_display_perf_formula(perf_formula formula);
 }

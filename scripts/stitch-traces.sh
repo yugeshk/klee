@@ -38,7 +38,13 @@ function stitch_traces {
 	  grep "Concrete State" stateful-analysis-log.txt > concrete-state-log.txt
   fi
   touch concrete-state-log.txt
-  grep -v "Concrete State" stateful-analysis-log.txt > stateful-perf.txt
+
+  if grep -q "Perf Formula" stateful-analysis-log.txt; then
+    grep "Perf Formula" stateful-analysis-log.txt > stateful-formula.txt
+  fi
+  touch stateful-formula.txt
+
+  grep -v "Concrete State" stateful-analysis-log.txt | grep -v "Perf Formula" > stateful-perf.txt
   cat stateful-perf.txt | cut -d "," -f1 | sort -nr | uniq > relevant_traces
   #sed -i '1d' joblog.txt && cat joblog.txt | awk '{print $7}' | sort -nr | uniq -c  
 

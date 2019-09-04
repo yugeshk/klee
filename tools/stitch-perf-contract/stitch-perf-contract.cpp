@@ -419,13 +419,16 @@ public:
 std::map<std::string, long> process_candidate(
     call_path_t *call_path, void *contract,
     std::map<initial_var_t, klee::ref<klee::Expr>> vars,
-    std::map<std::string, std::map<std::string, std::set<int>>> &cstate) {
+    std::map<std::string, std::map<std::string, std::set<int>>> &cstate,
+    std::map<std::string, perf_formula> &total_performance_formula) {
   LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_has_contract);
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
   LOAD_SYMBOL(contract, contract_get_subcontract_constraints);
   LOAD_SYMBOL(contract, contract_get_sub_contract_performance);
   LOAD_SYMBOL(contract, contract_get_concrete_state);
+  LOAD_SYMBOL(contract, contract_get_perf_formula);
+  LOAD_SYMBOL(contract, contract_add_perf_formula);
 
 #ifdef DEBUG
   std::cerr << std::endl;
@@ -661,6 +664,10 @@ std::map<std::string, long> process_candidate(
               cit.function_name, sub_contract_idx, metric, variables);
           assert(performance >= 0);
           total_performance[metric] += performance;
+          perf_formula formula = contract_get_perf_formula(
+              cit.function_name, sub_contract_idx, metric, variables);
+          total_performance_formula[metric] = contract_add_perf_formula(
+              total_performance_formula[metric], formula);
         }
 
         calls_processed++;
@@ -718,6 +725,7 @@ int main(int argc, char **argv, char **envp) {
   LOAD_SYMBOL(contract, contract_num_sub_contracts);
   LOAD_SYMBOL(contract, contract_get_subcontract_constraints);
   LOAD_SYMBOL(contract, contract_get_sub_contract_performance);
+  LOAD_SYMBOL(contract, contract_display_perf_formula);
 
   contract_init();
 
@@ -836,6 +844,8 @@ int main(int argc, char **argv, char **envp) {
 
   std::map<std::string, long> max_performance;
   std::map<std::string, std::map<std::string, std::set<int>>> final_cstate;
+  std::map<std::string, perf_formula> max_performance_formula;
+
   std::map<initial_var_t, std::set<klee::ref<klee::Expr>>::iterator>::iterator
       pos;
   do {
@@ -847,14 +857,16 @@ int main(int argc, char **argv, char **envp) {
 
     std::map<std::string, std::map<std::string, std::set<int>>>
         candidate_cstate;
-    std::map<std::string, long> performance =
-        process_candidate(call_path, contract, vars, candidate_cstate);
+    std::map<std::string, perf_formula> candidate_formula;
+    std::map<std::string, long> performance = process_candidate(
+        call_path, contract, vars, candidate_cstate, candidate_formula);
     for (auto metric : performance) {
       assert(metric.second >= 0);
       if (metric.second > max_performance[metric.first]) {
         final_cstate = candidate_cstate; /*Assumption that all three metrics
                                             increase/decrease together*/
         max_performance[metric.first] = metric.second;
+        max_performance_formula[metric.first] = candidate_formula[metric.first];
       }
     }
 
@@ -880,6 +892,13 @@ int main(int argc, char **argv, char **envp) {
 
   for (auto metric : max_performance) {
     std::cout << metric.first << "," << metric.second << std::endl;
+  }
+
+  if (!max_performance_formula.empty()) {
+    for (auto metric : max_performance_formula) {
+      std::cout << metric.first << ","
+                << contract_display_perf_formula(metric.second);
+    }
   }
 
   if (!final_cstate.empty()) {
