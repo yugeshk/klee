@@ -153,18 +153,6 @@ perf_formula contract_add_perf_formula(perf_formula accumulator,
                                        perf_formula addend);
 
 /**
- * Adds performance formula across function calls within a call path.
- *
- * @param accumulator Running total so far
- * @param addend formula to be added to running total
- * variables.
- * @returns Sum of two formulae. This function is commutative
- */
-
-perf_formula contract_add_perf_formula(perf_formula accumulator,
-                                       perf_formula addend);
-
-/**
  * Converts perf formula into string representation for display
  *
  * @param formula: Perf formula to be displayed
