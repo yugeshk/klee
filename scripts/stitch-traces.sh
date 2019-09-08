@@ -40,7 +40,7 @@ function stitch_traces {
   touch concrete-state-log.txt
 
   if grep -q "Perf Formula" stateful-analysis-log.txt; then
-    grep "Perf Formula" stateful-analysis-log.txt > stateful-formula.txt
+    grep "Perf Formula" stateful-analysis-log.txt | awk '{gsub(" Perf Formula:", "", $0); print}' > stateful-formula.txt
   fi
   touch stateful-formula.txt
 

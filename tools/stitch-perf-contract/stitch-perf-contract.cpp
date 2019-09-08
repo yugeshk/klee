@@ -896,7 +896,7 @@ int main(int argc, char **argv, char **envp) {
 
   if (!max_performance_formula.empty()) {
     for (auto metric : max_performance_formula) {
-      std::cout << metric.first << ","
+      std::cout << metric.first << ", Perf Formula:"
                 << contract_display_perf_formula(metric.second);
     }
   }

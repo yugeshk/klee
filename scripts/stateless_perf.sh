@@ -7,7 +7,7 @@ traces_dir=${1:-klee-last} #traces_dir needs to contain files with the name *.pa
 output=${2:-stateless-perf.txt}
 verif_arg=${3:-verify-dpdk}
 
-cd $traces_dir
+pushd $traces_dir
 
 echo Generating instruction traces
 
@@ -47,3 +47,5 @@ python $py_scripts_dir/stateless_perf.py  comp_insns num_accesses num_hits num_m
 
 rm -f $traces_dir/*.packet.stateless_mem_trace \
       $traces_dir/*.packet.stateless_mem_trace.classified
+
+popd
