@@ -20,10 +20,10 @@ metrics = ["instruction count", "memory instructions", "execution cycles"]
 
 def formula_priority_fn(x):
     if("e" in x):  # Put expiry first
-        return 0
+        return (2+x.count("*"))
     if("*" in x):  # Put collisions and traversals second
         return 1
-    return 2  # Put constant last
+    return 0  # Put constant last
 
 
 def main():
@@ -54,6 +54,7 @@ def main():
             for metric in metrics:
                 formula = val[metric].split('+')
                 formula.sort(key=formula_priority_fn)
+                formula.reverse()
                 final_formula = ""
                 for term in formula:
                     term = term.strip()
