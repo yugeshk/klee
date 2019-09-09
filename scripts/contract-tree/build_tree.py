@@ -15,7 +15,8 @@ formula_file = sys.argv[3]
 perf_metric = sys.argv[4]
 tree_file = sys.argv[5]
 perf_resolution = int(sys.argv[6])
-op_file = sys.argv[7]
+op_var_file = sys.argv[7]
+op_formula_file = sys.argv[8]
 
 
 class MyNode:
@@ -27,6 +28,7 @@ class MyNode:
         self._tags = []
         self._perf = -1
         self._sat = 1
+        self._formula = ""
 
     @property
     def name(self):
@@ -72,6 +74,14 @@ class MyNode:
         self._perf = value
 
     @property
+    def formula(self):
+        return self._formula
+
+    @formula.setter
+    def formula(self, value):
+        self._formula = value
+
+    @property
     def sat(self):
         return self._sat
 
@@ -93,7 +103,9 @@ traces_perf = {}
 traces_tags = {}
 traces_perf_formula = {}
 unique_tags = set()
+leaf_tags = set()
 perf_var = {}
+perf_formula_var = {}
 
 tree_root = TreeNode("ROOT", -1, -1)
 
@@ -150,6 +162,7 @@ def main():
             if(node.is_leaf):
                 if(node.name in traces_perf):  # Trace must be SAT to have a perf
                     node.perf = traces_perf[node.name]
+                    node.formula = traces_perf_formula[node.name]
                 else:
                     node.perf = -1
                     node.sat = 0
@@ -173,23 +186,76 @@ def main():
                 for child in children:
                     child.parent = None
 
-        # Get perf variability for each tag
+        # Get perf variability, including formula variability for each tag
         for tag in unique_tags:
             perf_var[tag] = set()
+            perf_formula_var[tag] = set()
 
         for trace, perf in traces_perf.items():
             if trace in traces_tags:
                 for tag in traces_tags[trace]:
                     perf_var[tag].add(perf)
+                    if(trace in traces_perf_formula):
+                        perf_formula_var[tag].add(traces_perf_formula[trace])
 
-        with open(op_file, "w") as op:
-            op.write("#Tag #Perf-Variability\n")
+        with open(op_var_file, "w") as op:
+            op.write("#Packet Class #Perf-Variability\n")
             for tag in unique_tags:
                 op.write("%s %d\n" %
                          (tag, (max(perf_var[tag]) - min(perf_var[tag]))))
+
+        with open(op_formula_file, "w") as op:
+            op.write("#Tag #Formula-Variability\n")
+            for tag in leaf_tags:
+                if(check_for_clarity(perf_formula_var[tag], tag)):
+                    op.write("%s Clarity was caught\n" % (tag))
+                else:
+                    op.write("%s Wild Clarity fled\n" % (tag))
+
+            # Pretty printing the contract
+            op.write("\n\nContract with Formulae\n\n")
+            column1 = "#Packet Class"
+            column2 = "#Possible Formulae"
+            line_break = "--" * 50 + "\n"
+            op.write("%s | \t%s \n\n" %
+                     ("{:<20}".format(column1), column2))
+            op.write(line_break)
+            for tag in leaf_tags:
+                ctr = 0
+                for formula in perf_formula_var[tag]:
+                    if(ctr == 0):
+                        column1 = tag
+                    else:
+                        column1 = ""
+                    op.write("%s |\t%s \n" %
+                             ("{:<20}".format(column1), formula))
+                    ctr = ctr + 1
+                op.write(line_break)
+
         DotExporter(tree_root,
                     nodenamefunc=node_identifier_fn,
                     nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+
+
+def check_for_clarity(formula_var, tags):
+    if(len(formula_var) == 0):
+        return False
+
+    pcvs_used = {}
+    for formula in formula_var:
+        pcvs_used[formula] = list()
+        formula_terms = formula.split("+")
+        for term in formula_terms:
+            term = term.strip()
+            if("*" in term):
+                sep = find_nth(term, "*", 1)
+                pcvs = term[sep+1:]
+                pcvs = pcvs.replace("*", "")
+            else:
+                pcvs = ""
+            pcvs_used[formula].append(pcvs)
+    expected_pcv_set = set(pcvs_used[list(formula_var)[0]])
+    return all(set(pcv_list) == expected_pcv_set for pcv_list in pcvs_used.values())
 
 
 def assign_tags(node):
@@ -230,6 +296,7 @@ def node_identifier_fn(node):
         identifier = '%s' % (node.name)
         if (node.sat):
             identifier += '\nPerf = %s' % (node.perf)
+            identifier += '\nFormula = %s' % (node.formula)
 
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
@@ -263,13 +330,28 @@ def get_traces_perf():
 def get_traces_tags():
     global traces_tags
     global unique_tags
+    global leaf_tags
     with open(tags_file, 'r') as f:
-        for line in f:
+        lines = f.readlines()  # Small file, so OK.
+        # Hack to access next element too
+        lines_hack = lines[1:]
+        lines_hack.append(None)
+        for line, next_line in zip(lines, lines_hack):
             text = line.rstrip()
             test_id = text[0:
                            find_nth(text, ",", 1)]
             tag = text[(find_nth(text, ",", 2)+1):]
             unique_tags.add(tag)
+            if(next_line != None):
+                next_text = next_line.rstrip()
+                next_test_id = next_text[0:
+                                         find_nth(next_text, ",", 1)]
+            else:
+                next_test_id = ""
+            if(test_id != next_test_id):
+                leaf_tags.add(tag)
+                if(tag == "CLIENT_REQUEST"):
+                    print(test_id)
             if test_id in traces_tags:
                 traces_tags[test_id].append(tag)
             else:
@@ -287,7 +369,7 @@ def get_traces_perf_formula():
                            find_nth(text, ",", 1)]
             metric = text[(find_nth(text, ",", 1)+1):
                           find_nth(text, ",", 2)]
-            perf = text[(find_nth(text, ",", 2)+1):]
+            perf = str(text[(find_nth(text, ",", 2)+1):])
 
             if (metric == perf_metric):
                 traces_perf_formula[test_id] = perf
