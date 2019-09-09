@@ -11,10 +11,11 @@ from anytree.exporter import DotExporter
 
 tags_file = sys.argv[1]
 perf_file = sys.argv[2]
-perf_metric = sys.argv[3]
-tree_file = sys.argv[4]
-perf_resolution = int(sys.argv[5])
-op_file = sys.argv[6]
+formula_file = sys.argv[3]
+perf_metric = sys.argv[4]
+tree_file = sys.argv[5]
+perf_resolution = int(sys.argv[6])
+op_file = sys.argv[7]
 
 
 class MyNode:
@@ -90,6 +91,7 @@ class TreeNode(MyNode, NodeMixin):
 
 traces_perf = {}
 traces_tags = {}
+traces_perf_formula = {}
 unique_tags = set()
 perf_var = {}
 
@@ -101,6 +103,7 @@ def main():
 
     get_traces_perf()
     get_traces_tags()
+    get_traces_perf_formula()
 
     with open(tree_file, 'r') as f:
         for line in f:
@@ -273,6 +276,21 @@ def get_traces_tags():
                 list_tags = []
                 list_tags.append(tag)
                 traces_tags[test_id] = list_tags
+
+
+def get_traces_perf_formula():
+    global traces_perf_formula
+    with open(formula_file, 'r') as f:
+        for line in f:
+            text = line.rstrip()
+            test_id = text[0:
+                           find_nth(text, ",", 1)]
+            metric = text[(find_nth(text, ",", 1)+1):
+                          find_nth(text, ",", 2)]
+            perf = text[(find_nth(text, ",", 2)+1):]
+
+            if (metric == perf_metric):
+                traces_perf_formula[test_id] = perf
 
 
 def find_nth(haystack, needle, n):
