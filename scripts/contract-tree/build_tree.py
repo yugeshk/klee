@@ -100,7 +100,8 @@ class TreeNode(MyNode, NodeMixin):
 traces_perf = {}
 traces_tags = {}
 traces_perf_formula = {}
-unique_tags = list()
+leaf_tags = list()
+all_tag_prefixes = list()
 perf_var = {}
 perf_formula_var = {}
 
@@ -179,27 +180,31 @@ def main():
                     child.parent = None
 
         # Get perf variability, including formula variability for each tag
-        for tag in unique_tags:
+        for tag in all_tag_prefixes:
             perf_var[tuple(tag)] = set()
             perf_formula_var[tuple(tag)] = set()
 
         for trace, perf in traces_perf.items():
             if trace in traces_tags:
-                perf_var[tuple(traces_tags[trace])].add(perf)
+                for x in range(1, len(traces_tags[trace])+1):
+                    print(traces_tags[trace][0:x])
+                    perf_var[tuple(traces_tags[trace][0:x])].add(perf)
                 if(trace in traces_perf_formula):
-                    perf_formula_var[tuple(traces_tags[trace])].add(
-                        traces_perf_formula[trace])
+                    for x in range(1, len(traces_tags[trace])+1):
+                        perf_formula_var[tuple(traces_tags[trace][0:x])].add(
+                            traces_perf_formula[trace])
 
         with open(op_var_file, "w") as op:
             op.write("#Packet Class #Perf-Variability\n")
-            for tag in unique_tags:
-                op.write("%s %d\n" %
-                         (tag, (max(perf_var[tuple(tag)])
-                                - min(perf_var[tuple(tag)]))))
+            for tag in all_tag_prefixes:
+                if(len(perf_var[tuple(tag)])):
+                    op.write("%s %d\n" %
+                             (tag, (max(perf_var[tuple(tag)])
+                                    - min(perf_var[tuple(tag)]))))
 
         with open(op_formula_file, "w") as op:
             op.write("#Tag #Formula-Variability\n")
-            for tag in unique_tags:
+            for tag in all_tag_prefixes:
                 if(check_for_clarity(perf_formula_var[tuple(tag)])):
                     op.write("%s Clarity was caught\n" % (tag))
                 else:
@@ -213,7 +218,7 @@ def main():
             op.write("%s | \t%s \n\n" %
                      ("{:<75}".format(column1), column2))
             op.write(line_break)
-            for tag in unique_tags:
+            for tag in leaf_tags:  # Only input classes that extend upto the leaf
                 ctr = 0
                 for formula in perf_formula_var[tuple(tag)]:
                     if(ctr == 0):
@@ -316,7 +321,8 @@ def get_traces_perf():
 
 def get_traces_tags():
     global traces_tags
-    global unique_tags
+    global leaf_tags
+    global all_tag_prefixes
     with open(tags_file, 'r') as f:
         lines = f.readlines()  # Small file, so OK.
         # Hack to access next element too
@@ -345,8 +351,11 @@ def get_traces_tags():
                 next_test_id = ""
 
             if(test_id != next_test_id):  # Reached the leaf tag
-                if(traces_tags[test_id] not in unique_tags):
-                    unique_tags.append(traces_tags[test_id])
+                if(traces_tags[test_id] not in leaf_tags):
+                    leaf_tags.append(traces_tags[test_id])
+                    for x in range(1, len(traces_tags[test_id])+1):
+                        if(traces_tags[test_id][0:x] not in all_tag_prefixes):
+                            all_tag_prefixes.append(traces_tags[test_id][0:x])
 
 
 def get_traces_perf_formula():
