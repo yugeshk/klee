@@ -206,7 +206,7 @@ def main():
 
         with open(op_formula_file, "w") as op:
             op.write("#Tag #Formula-Variability\n")
-            for tag in leaf_tags:
+            for tag in unique_tags:
                 if(check_for_clarity(perf_formula_var[tag], tag)):
                     op.write("%s Clarity was caught\n" % (tag))
                 else:
@@ -248,9 +248,9 @@ def check_for_clarity(formula_var, tags):
         for term in formula_terms:
             term = term.strip()
             if("*" in term):
-                sep = find_nth(term, "*", 1)
-                pcvs = term[sep+1:]
-                pcvs = pcvs.replace("*", "")
+                # sep = find_nth(term, "*", 1)
+                # pcvs = term[sep+1:]
+                pcvs = term.replace("*", "")
             else:
                 pcvs = ""
             pcvs_used[formula].append(pcvs)
