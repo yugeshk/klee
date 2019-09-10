@@ -248,8 +248,6 @@ def check_for_clarity(formula_var, tags):
         for term in formula_terms:
             term = term.strip()
             if("*" in term):
-                # sep = find_nth(term, "*", 1)
-                # pcvs = term[sep+1:]
                 pcvs = term.replace("*", "")
             else:
                 pcvs = ""
