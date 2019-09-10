@@ -3,6 +3,7 @@
 
 import sys
 import string
+import os
 
 # https://anytree.readthedocs.io/en/latest/index.html
 from anytree import NodeMixin, RenderTree, PostOrderIter
@@ -60,10 +61,7 @@ class MyNode:
 
     @tags.setter
     def tags(self, value):
-        self_tags = value
-
-    def add_tag(self, tag):
-        self.tags.append(tag)
+        self._tags = value
 
     @property
     def perf(self):
@@ -102,8 +100,7 @@ class TreeNode(MyNode, NodeMixin):
 traces_perf = {}
 traces_tags = {}
 traces_perf_formula = {}
-unique_tags = set()
-leaf_tags = set()
+unique_tags = list()
 perf_var = {}
 perf_formula_var = {}
 
@@ -157,27 +154,22 @@ def main():
                     curr_parent.parent = None
 
         # Let's assign tags and performance resolution now
-        unique_tags.add("UNSAT")  # For UNSAT nodes
         for node in list(PostOrderIter(tree_root)):
             if(node.is_leaf):
                 if(node.name in traces_perf):  # Trace must be SAT to have a perf
                     node.perf = traces_perf[node.name]
                     node.formula = traces_perf_formula[node.name]
+                    if(node.name in traces_tags):
+                        node.tags = traces_tags[node.name]
+
                 else:
                     node.perf = -1
                     node.sat = 0
-                    node.add_tag("UNSAT")
-
-                if(node.name in traces_tags):
-                    # For some reason the setter doesn't work directly :(
-                    for tag in traces_tags[node.name]:
-                        node.add_tag(tag)
+                    node.tags = ["UNSAT"]
 
             else:
                 node.perf = get_perf_variability(node)
                 assign_tags(node)
-
-        unique_tags.remove("UNSAT")  # For UNSAT nodes. Else it interferes
 
         # Now, let's coalesce nodes with no perf difference!
         for node in list(PostOrderIter(tree_root)):
@@ -188,26 +180,27 @@ def main():
 
         # Get perf variability, including formula variability for each tag
         for tag in unique_tags:
-            perf_var[tag] = set()
-            perf_formula_var[tag] = set()
+            perf_var[tuple(tag)] = set()
+            perf_formula_var[tuple(tag)] = set()
 
         for trace, perf in traces_perf.items():
             if trace in traces_tags:
-                for tag in traces_tags[trace]:
-                    perf_var[tag].add(perf)
-                    if(trace in traces_perf_formula):
-                        perf_formula_var[tag].add(traces_perf_formula[trace])
+                perf_var[tuple(traces_tags[trace])].add(perf)
+                if(trace in traces_perf_formula):
+                    perf_formula_var[tuple(traces_tags[trace])].add(
+                        traces_perf_formula[trace])
 
         with open(op_var_file, "w") as op:
             op.write("#Packet Class #Perf-Variability\n")
             for tag in unique_tags:
                 op.write("%s %d\n" %
-                         (tag, (max(perf_var[tag]) - min(perf_var[tag]))))
+                         (tag, (max(perf_var[tuple(tag)])
+                                - min(perf_var[tuple(tag)]))))
 
         with open(op_formula_file, "w") as op:
             op.write("#Tag #Formula-Variability\n")
             for tag in unique_tags:
-                if(check_for_clarity(perf_formula_var[tag], tag)):
+                if(check_for_clarity(perf_formula_var[tuple(tag)])):
                     op.write("%s Clarity was caught\n" % (tag))
                 else:
                     op.write("%s Wild Clarity fled\n" % (tag))
@@ -216,19 +209,19 @@ def main():
             op.write("\n\nContract with Formulae\n\n")
             column1 = "#Packet Class"
             column2 = "#Possible Formulae"
-            line_break = "--" * 50 + "\n"
+            line_break = "-" * 150 + "\n"
             op.write("%s | \t%s \n\n" %
-                     ("{:<20}".format(column1), column2))
+                     ("{:<75}".format(column1), column2))
             op.write(line_break)
-            for tag in leaf_tags:
+            for tag in unique_tags:
                 ctr = 0
-                for formula in perf_formula_var[tag]:
+                for formula in perf_formula_var[tuple(tag)]:
                     if(ctr == 0):
-                        column1 = tag
+                        column1 = str(tag)[1:-1]
                     else:
                         column1 = ""
                     op.write("%s |\t%s \n" %
-                             ("{:<20}".format(column1), formula))
+                             ("{:<75}".format(column1), formula))
                     ctr = ctr + 1
                 op.write(line_break)
 
@@ -237,7 +230,7 @@ def main():
                     nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
 
 
-def check_for_clarity(formula_var, tags):
+def check_for_clarity(formula_var):
     if(len(formula_var) == 0):
         return False
 
@@ -260,14 +253,9 @@ def assign_tags(node):
     # Returns tags for an intermediate node in the tree.
     # A node has a particular tag iff all its descendants have that tag
     children = list(node.children)
-    for tag in unique_tags:
-        tag_present = 1
-        for child in children:
-            if (tag not in child.tags):
-                tag_present = 0
-                break
-        if (tag_present):
-            node.add_tag(tag)
+    assert(len(children) > 0)
+    children_tags = list(child.tags for child in children)
+    node.tags = os.path.commonprefix(children_tags)
 
 
 def get_perf_variability(node):
@@ -299,8 +287,9 @@ def node_identifier_fn(node):
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
             node.name, node.id, node.depth, node.perf)
-    for tag in node.tags:
-        identifier += "\n%s" % (tag)
+    tag = str(node.tags)[1:-1]
+    tag = tag.replace(", ", "\n")
+    identifier += "\n%s" % (tag)
     return identifier
 
 
@@ -328,7 +317,6 @@ def get_traces_perf():
 def get_traces_tags():
     global traces_tags
     global unique_tags
-    global leaf_tags
     with open(tags_file, 'r') as f:
         lines = f.readlines()  # Small file, so OK.
         # Hack to access next element too
@@ -339,23 +327,26 @@ def get_traces_tags():
             test_id = text[0:
                            find_nth(text, ",", 1)]
             tag = text[(find_nth(text, ",", 2)+1):]
-            unique_tags.add(tag)
-            if(next_line != None):
-                next_text = next_line.rstrip()
-                next_test_id = next_text[0:
-                                         find_nth(next_text, ",", 1)]
-            else:
-                next_test_id = ""
-            if(test_id != next_test_id):
-                leaf_tags.add(tag)
-                if(tag == "CLIENT_REQUEST"):
-                    print(test_id)
+
+            # Assign all tags for current test in a list
             if test_id in traces_tags:
                 traces_tags[test_id].append(tag)
             else:
                 list_tags = []
                 list_tags.append(tag)
                 traces_tags[test_id] = list_tags
+
+            # Getting unique tags
+            if(next_line != None):
+                next_text = next_line.rstrip()
+                next_test_id = next_text[0:
+                                         find_nth(next_text, ",", 1)]
+            else:
+                next_test_id = ""
+
+            if(test_id != next_test_id):  # Reached the leaf tag
+                if(traces_tags[test_id] not in unique_tags):
+                    unique_tags.append(traces_tags[test_id])
 
 
 def get_traces_perf_formula():
