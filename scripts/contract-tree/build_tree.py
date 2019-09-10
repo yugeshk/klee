@@ -187,7 +187,6 @@ def main():
         for trace, perf in traces_perf.items():
             if trace in traces_tags:
                 for x in range(1, len(traces_tags[trace])+1):
-                    print(traces_tags[trace][0:x])
                     perf_var[tuple(traces_tags[trace][0:x])].add(perf)
                 if(trace in traces_perf_formula):
                     for x in range(1, len(traces_tags[trace])+1):
