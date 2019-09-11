@@ -23,6 +23,13 @@ duplicated_stats_file = sys.argv[5]
 
 def main():
 
+    with open(ip_trace) as f:
+        if("Call to libVig model" in list(f)[-1]):
+            print("Error in %s. LibVig call returned poorly" %
+                  (ip_trace[0:10]))
+            assert(0)
+    f.close()
+
     rel_cstate = {}
     with open(concrete_state_log) as cstate:
         # We make assumptions on the name of the file, in particular it will be of the form test######.*
@@ -44,7 +51,7 @@ def main():
     duplicated = 0
 
     # print(sorted(rel_cstate))
-    #print("New trace")
+    # print("New trace")
     with open(ip_trace) as f, open(ip_metadata) as meta_f:
         with open(op_file, "w") as output:
             for line in f:
