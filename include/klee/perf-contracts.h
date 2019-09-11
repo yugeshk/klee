@@ -126,6 +126,14 @@ contract_get_concrete_state(std::string function_name, int sub_contract_idx,
 /* Common type definition for all perf formula */
 typedef std::map<std::string, long> perf_formula;
 
+/* Defining PCV Abstraction Levels */
+typedef enum {
+  LOOP_CTRS, // Collisions, Traversals etc.
+  FN_CALLS,  // LibVig Function calls
+} PCVAbstraction;
+
+#define PCV_ABSTRACTION
+
 /**
  * Returns performance formula for the given subcontract.
  *
@@ -138,7 +146,8 @@ typedef std::map<std::string, long> perf_formula;
 
 perf_formula contract_get_perf_formula(std::string function_name,
                                        int sub_contract_idx, std::string metric,
-                                       std::map<std::string, long> variables);
+                                       std::map<std::string, long> variables,
+                                       PCVAbstraction PCVAbs);
 
 /**
  * Adds performance formula across function calls within a call path.
@@ -150,7 +159,8 @@ perf_formula contract_get_perf_formula(std::string function_name,
  */
 
 perf_formula contract_add_perf_formula(perf_formula accumulator,
-                                       perf_formula addend);
+                                       perf_formula addend,
+                                       PCVAbstraction PCVAbs);
 
 /**
  * Converts perf formula into string representation for display
@@ -160,5 +170,6 @@ perf_formula contract_add_perf_formula(perf_formula accumulator,
  * @returns string representation of formula
  */
 
-std::string contract_display_perf_formula(perf_formula formula);
+std::string contract_display_perf_formula(perf_formula formula,
+                                          PCVAbstraction PCVAbs);
 }

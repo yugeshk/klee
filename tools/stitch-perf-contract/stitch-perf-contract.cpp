@@ -80,6 +80,8 @@ typedef struct {
 std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
     subcontract_constraints;
 
+PCVAbstraction PCVAbs = FN_CALLS;
+
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
                             std::deque<klee::ref<klee::Expr>> &expressions,
@@ -665,9 +667,9 @@ std::map<std::string, long> process_candidate(
           assert(performance >= 0);
           total_performance[metric] += performance;
           perf_formula formula = contract_get_perf_formula(
-              cit.function_name, sub_contract_idx, metric, variables);
+              cit.function_name, sub_contract_idx, metric, variables, PCVAbs);
           total_performance_formula[metric] = contract_add_perf_formula(
-              total_performance_formula[metric], formula);
+              total_performance_formula[metric], formula, PCVAbs);
         }
 
         calls_processed++;
@@ -897,7 +899,7 @@ int main(int argc, char **argv, char **envp) {
   if (!max_performance_formula.empty()) {
     for (auto metric : max_performance_formula) {
       std::cout << metric.first << ", Perf Formula:"
-                << contract_display_perf_formula(metric.second);
+                << contract_display_perf_formula(metric.second, PCVAbs);
     }
   }
 
