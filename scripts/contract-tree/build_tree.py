@@ -213,19 +213,27 @@ def main():
             op.write("\n\nContract with Formulae\n\n")
             column1 = "#Packet Class"
             column2 = "#Possible Formulae"
-            line_break = "-" * 150 + "\n"
+            line_break = "-" * 200 + "\n"
             op.write("%s | \t%s \n\n" %
-                     ("{:<75}".format(column1), column2))
+                     ("{:<100}".format(column1), column2))
             op.write(line_break)
             for tag in leaf_tags:  # Only input classes that extend upto the leaf
                 ctr = 0
                 for formula in perf_formula_var[tuple(tag)]:
                     if(ctr == 0):
                         column1 = str(tag)[1:-1]
+                    elif(ctr == 1):
+                        column1 = "Perf Var = %d" % ((max(perf_var[tuple(tag)])
+                                                      - min(perf_var[tuple(tag)])))
+                    elif(ctr == 2):
+                        if(check_for_clarity(perf_formula_var[tuple(tag)])):
+                            column1 = "Clarity was caught"
+                        else:
+                            column1 = "Wild Clarity fled"
                     else:
                         column1 = ""
                     op.write("%s |\t%s \n" %
-                             ("{:<75}".format(column1), formula))
+                             ("{:<100}".format(column1), formula))
                     ctr = ctr + 1
                 op.write(line_break)
 
