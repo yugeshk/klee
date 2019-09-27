@@ -217,7 +217,7 @@ def main():
             op.write("%s | \t%s \n\n" %
                      ("{:<100}".format(column1), column2))
             op.write(line_break)
-            for tag in leaf_tags:  # Only input classes that extend upto the leaf
+            for tag in all_tag_prefixes:  # Only input classes that extend upto the leaf
                 ctr = 0
                 for formula in perf_formula_var[tuple(tag)]:
                     if(ctr == 0):
@@ -363,6 +363,8 @@ def get_traces_tags():
                     for x in range(1, len(traces_tags[test_id])+1):
                         if(traces_tags[test_id][0:x] not in all_tag_prefixes):
                             all_tag_prefixes.append(traces_tags[test_id][0:x])
+    all_tag_prefixes = list(all_tag_prefixes)
+    all_tag_prefixes.sort(key=lambda x: len(x))
 
 
 def get_traces_perf_formula():
