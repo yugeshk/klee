@@ -10,14 +10,17 @@ from anytree import NodeMixin, RenderTree, PostOrderIter
 from anytree.search import find, findall_by_attr
 from anytree.exporter import DotExporter
 
+sys.setrecursionlimit(1000000)
+
 tags_file = sys.argv[1]
 perf_file = sys.argv[2]
 formula_file = sys.argv[3]
 perf_metric = sys.argv[4]
 tree_file = sys.argv[5]
-perf_resolution = int(sys.argv[6])
-op_var_file = sys.argv[7]
-op_formula_file = sys.argv[8]
+tree_type = sys.argv[6]
+perf_resolution = int(sys.argv[7])
+op_var_file = sys.argv[8]
+op_formula_file = sys.argv[9]
 
 
 class MyNode:
@@ -111,35 +114,68 @@ tree_root = TreeNode("ROOT", -1, -1)
 def main():
     global tree_root
 
+    assert(tree_type == "full-tree" or tree_type == "call-tree")
     get_traces_perf()
     get_traces_tags()
     get_traces_perf_formula()
 
     with open(tree_file, 'r') as f:
+        id_ctr = 0
         for line in f:
             text = line.rstrip()
-            assert(text[len(text)-1] == ',')
-            text = text[:-1]
-            sequence = text.split(',')
-            subtree_root = tree_root
-            depth = 0
-            for node_id in sequence:
+            if(tree_type == "call-tree"):
+                assert(text[len(text)-1] == ',')
+                text = text[:-1]
+                sequence = text.split(',')
+                subtree_root = tree_root
+                depth = 0
+                for node_id in sequence:
 
-                next_hop = find(
-                    subtree_root, lambda TreeNode: TreeNode.id == node_id and TreeNode.depth == depth)
-                if(next_hop):
-                    subtree_root = next_hop
-                else:
-                    if(depth == (len(sequence)-1)):  # Leaf Node
-                        node_name = "test"+f"{int(node_id):06d}"
+                    children = list(subtree_root.children)
+                    next_hop = next(
+                        (x for x in children if x.id == node_id and x.depth == depth), None)
+
+                    if(next_hop):
+                        subtree_root = next_hop
                     else:
-                        node_name = "call"
+                        if(depth == (len(sequence)-1)):  # Leaf Node
+                            node_name = "test"+f"{int(node_id):06d}"
+                        else:
+                            node_name = "call"
 
-                    node = TreeNode(node_name, node_id, depth,
-                                    parent=subtree_root)
-                    subtree_root = node
+                        node = TreeNode(node_name, node_id, depth,
+                                        parent=subtree_root)
+                        subtree_root = node
 
-                depth = depth+1
+                    depth = depth+1
+
+            elif(tree_type == "full-tree"):
+                index = find_nth(text, ":", 1)
+                leaf_id = text[0:index]
+                text = text[index+1:]
+                leaf_node_name = "test"+f"{int(leaf_id):06d}"
+                print("inserting node %s" % (leaf_node_name))
+                sequence = text.split(',')
+                subtree_root = tree_root
+                depth = 0
+                for node_id in sequence:
+                    children = list(subtree_root.children)
+                    next_hop = next(
+                        (x for x in children if x.id == node_id and x.depth == depth), None)
+                    if(next_hop):
+                        subtree_root = next_hop
+                    else:
+                        if(depth == (len(sequence)-1)):  # Leaf Node
+                            node_name = leaf_node_name
+                        else:
+                            node_name = "branch"+f"{int(id_ctr):06d}"
+
+                        node = TreeNode(node_name, node_id, depth,
+                                        parent=subtree_root)
+                        subtree_root = node
+                        id_ctr = id_ctr + 1
+
+                    depth = depth+1
 
         # Finished constructing tree, now coalesce spurious nodes.
         for node in list(PostOrderIter(tree_root))[:]:

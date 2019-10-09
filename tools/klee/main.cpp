@@ -987,7 +987,7 @@ void KleeHandler::dumpCallPathPrefixes() {
 }
 
 void KleeHandler::dumpCallPathTree() {
-  std::string filename = "tree.txt";
+  std::string filename = "call-tree.txt";
   llvm::raw_ostream *tree_file = this->openOutputFile(filename);
   filename = "calls.txt";
   llvm::raw_ostream *calls_file = this->openOutputFile(filename);
