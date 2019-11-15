@@ -207,8 +207,20 @@ def main():
         for node in list(PostOrderIter(tree_root)):
             if(not node.is_leaf and node.perf < perf_resolution):
                 children = list(node.children)
+                children_perf = list(child.perf for child in children)
+                node.perf = int((max(children_perf) + min(children_perf))/2)
+                # TODO:HACK HACK HACK. Needs actual coalescing
+                node.formula = children[0].formula
                 for child in children:
                     child.parent = None
+
+        # Now, let's remove spurious, perf-unrelated branching
+        for node in list(PostOrderIter(tree_root)):
+            if(not node.is_leaf):
+                children = list(node.children)
+                if(len(children) != 2 and not node.is_root):
+                    # We only deal with binary trees
+                    assert(0)
 
         # Get perf variability, including formula variability for each tag
         for tag in all_tag_prefixes:
@@ -311,7 +323,7 @@ def get_perf_variability(node):
 
 
 def node_colour_fn(node):
-    if(node.name.startswith("test")):  # Cannot use is_leaf because of perf_var coalescing
+    if(node.is_leaf):
         colour = "fillcolor = red,fontcolor = white"
     else:
         colour = "fillcolor = white,fontcolor = black"
@@ -319,21 +331,25 @@ def node_colour_fn(node):
 
 
 def node_identifier_fn(node):
-    if(node.name.startswith("test")):  # Cannot use is_leaf because of perf_var coalescing
-        identifier = '%s' % (node.name)
+    if(node.is_leaf):
+        if(node.name.startswith("test")):
+            identifier = '%s' % (node.name)
+        else:
+            tests = str(node.sub_tests)[1:-1]
+            tests = tests.replace(", ", "\n")
+            identifier = '%s' % (tests)
+
         identifier += '\nPerf = %s' % (node.perf)
         identifier += '\nFormula = %s' % (node.formula)
 
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
             node.name, node.id, node.depth, node.perf)
+
     tag = str(node.tags)[1:-1]  # Removes the square brackets around the list
     tag = tag.replace(", ", "\n")
     identifier += "\n%s" % (tag)
-    if(node.is_leaf and not node.name.startswith("test")):
-        tests = str(node.sub_tests)[1:-1]
-        tests = tests.replace(", ", "\n")
-        identifier += "\n%s" % (tests)
+
     return identifier
 
 
