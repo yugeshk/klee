@@ -31,7 +31,6 @@ class MyNode:
         self._depth = depth
         self._tags = []
         self._perf = -1
-        self._sat = 1
         self._formula = ""
         self._sub_tests = []
 
@@ -74,15 +73,6 @@ class MyNode:
     @perf.setter
     def perf(self, value):
         self._perf = value
-
-    @property
-    def sat(self):
-        return self._sat
-
-    @sat.setter
-    def sat(self, value):
-        assert(0 == value or 1 == value)
-        self._sat = value
 
     @property
     def formula(self):
@@ -163,29 +153,30 @@ def main():
                 leaf_id = text[0:index]
                 text = text[index+1:]
                 leaf_node_name = "test"+f"{int(leaf_id):06d}"
-                print("inserting node %s" % (leaf_node_name))
-                sequence = text.split(',')
-                subtree_root = tree_root
-                depth = 0
-                for node_id in sequence:
-                    children = list(subtree_root.children)
-                    next_hop = next(
-                        (x for x in children if x.id == node_id and x.depth == depth), None)
-                    if(next_hop):
-                        subtree_root = next_hop
-                    else:
-                        if(depth == (len(sequence)-1)):  # Leaf Node
-                            node_name = leaf_node_name
+                if(leaf_node_name in traces_perf):
+                    print("inserting node %s" % (leaf_node_name))
+                    sequence = text.split(',')
+                    subtree_root = tree_root
+                    depth = 0
+                    for node_id in sequence:
+                        children = list(subtree_root.children)
+                        next_hop = next(
+                            (x for x in children if x.id == node_id and x.depth == depth), None)
+                        if(next_hop):
+                            subtree_root = next_hop
                         else:
-                            node_name = "branch"+f"{int(id_ctr):06d}"
+                            if(depth == (len(sequence)-1)):  # Leaf Node
+                                node_name = leaf_node_name
+                            else:
+                                node_name = "branch"+f"{int(id_ctr):06d}"
 
-                        node = TreeNode(node_name, node_id, depth,
-                                        parent=subtree_root)
-                        subtree_root = node
-                        id_ctr = id_ctr + 1
+                            node = TreeNode(node_name, node_id, depth,
+                                            parent=subtree_root)
+                            subtree_root = node
+                            id_ctr = id_ctr + 1
 
-                    subtree_root.sub_tests.append(leaf_node_name)
-                    depth = depth+1
+                        subtree_root.sub_tests.append(leaf_node_name)
+                        depth = depth+1
 
         # Finished constructing tree, now coalesce spurious nodes.
         for node in list(PostOrderIter(tree_root))[:]:
@@ -203,16 +194,10 @@ def main():
         # Let's assign tags and performance resolution now
         for node in list(PostOrderIter(tree_root)):
             if(node.is_leaf):
-                if(node.name in traces_perf):  # Trace must be SAT to have a perf
-                    node.perf = traces_perf[node.name]
-                    node.formula = traces_perf_formula[node.name]
-                    if(node.name in traces_tags):
-                        node.tags = traces_tags[node.name]
-
-                else:
-                    node.perf = -1
-                    node.sat = 0
-                    node.tags = ["UNSAT"]
+                node.perf = traces_perf[node.name]
+                node.formula = traces_perf_formula[node.name]
+                if(node.name in traces_tags):
+                    node.tags = traces_tags[node.name]
 
             else:
                 node.perf = get_perf_variability(node)
@@ -320,8 +305,6 @@ def get_perf_variability(node):
     # Returns perf variability for an intermediate node in the tree.
     leaves = list(findall_by_attr(node, 1, name='is_leaf'))
     leaves_perf = list(leaf.perf for leaf in leaves)
-    if (-1 in leaves_perf):  # Remove all unsat nodes
-        leaves_perf.remove(-1)
     if (len(leaves_perf)):
         return max(leaves_perf) - min(leaves_perf)
     return 0
@@ -338,9 +321,8 @@ def node_colour_fn(node):
 def node_identifier_fn(node):
     if(node.name.startswith("test")):  # Cannot use is_leaf because of perf_var coalescing
         identifier = '%s' % (node.name)
-        if (node.sat):
-            identifier += '\nPerf = %s' % (node.perf)
-            identifier += '\nFormula = %s' % (node.formula)
+        identifier += '\nPerf = %s' % (node.perf)
+        identifier += '\nFormula = %s' % (node.formula)
 
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
