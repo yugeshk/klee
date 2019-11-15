@@ -214,13 +214,15 @@ def main():
                 for child in children:
                     child.parent = None
 
-        # Now, let's remove spurious, perf-unrelated branching
+        # Now, let's remove spurious, perf-unrelated branching.
         for node in list(PostOrderIter(tree_root)):
-            if(not node.is_leaf):
+            if(not node.is_leaf and not node.is_root):  # Root has only 1 child in our tree
                 children = list(node.children)
-                if(len(children) != 2 and not node.is_root):
-                    # We only deal with binary trees
-                    assert(0)
+                assert(len(children) == 2)  # Only dealing with binary trees
+                print(node.name)
+                if(compare_trees(children[0], children[1])):
+                    print(node.name)
+                    children[1].parent = None
 
         # Get perf variability, including formula variability for each tag
         for tag in all_tag_prefixes:
@@ -283,6 +285,35 @@ def main():
         DotExporter(tree_root,
                     nodenamefunc=node_identifier_fn,
                     nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+
+
+def compare_trees(node1, node2):
+    print("Call to compare trees with %s, %s" % (node1.name, node2.name))
+    if(len(node1.children) != len(node2.children)):
+        return 0
+    elif(node1.is_leaf):
+        # Node2 is also a leaf node because of above check
+        if(abs(node1.perf-node2.perf) < perf_resolution):
+            return 1
+        else:
+            return 0
+    else:  # Can have one child because coalescing is done later
+        if(len(node1.children) == 1):
+            if(compare_trees(node1.children[0], node2.children[0])):
+                return 1
+            else:
+                return 0
+        else:
+            if(
+                (compare_trees(node1.children[0], node2.children[0]) and compare_trees(
+                    node1.children[1], node2.children[1]))
+                or
+                    (compare_trees(node1.children[0], node2.children[1]) and compare_trees(
+                        node1.children[1], node2.children[0]))
+            ):
+                return 1
+            else:
+                return 0
 
 
 def check_for_clarity(formula_var):
