@@ -215,14 +215,37 @@ def main():
                     child.parent = None
 
         # Now, let's remove spurious, perf-unrelated branching.
-        for node in list(PostOrderIter(tree_root)):
-            if(not node.is_leaf and not node.is_root):  # Root has only 1 child in our tree
-                children = list(node.children)
-                assert(len(children) == 2)  # Only dealing with binary trees
-                print(node.name)
-                if(compare_trees(children[0], children[1])):
+        # This is an iterative process which will repeat until we hit a fixed point
+        changed = 1
+        while(changed):
+            changed = 0
+
+            # First remove spurious branching
+            for node in list(PostOrderIter(tree_root)):
+                if(not node.is_leaf and not node.is_root):  # Root has only 1 child in our tree
+                    children = list(node.children)
+                    # Only dealing with binary trees
+                    assert(len(children) == 2)
                     print(node.name)
-                    children[1].parent = None
+                    if(compare_trees(children[0], children[1])):
+                        print(node.name)
+                        children[1].parent = None
+                        changed = 1
+
+            # Then remove spurious nodes
+            if(changed):
+                changed = 0
+                for node in list(PostOrderIter(tree_root))[:]:
+                    while(len(node.siblings) == 0):
+                        # We do not want to coalesce the root or the first node
+                        if(node.parent == tree_root or node.is_root):
+                            break
+                        else:
+                            curr_parent = node.parent
+                            new_parent = curr_parent.parent
+                            node.parent = new_parent
+                            curr_parent.parent = None
+                            changed = 1
 
         # Get perf variability, including formula variability for each tag
         for tag in all_tag_prefixes:
