@@ -33,6 +33,7 @@ class MyNode:
         self._perf = -1
         self._sat = 1
         self._formula = ""
+        self._sub_tests = []
 
     @property
     def name(self):
@@ -75,6 +76,15 @@ class MyNode:
         self._perf = value
 
     @property
+    def sat(self):
+        return self._sat
+
+    @sat.setter
+    def sat(self, value):
+        assert(0 == value or 1 == value)
+        self._sat = value
+
+    @property
     def formula(self):
         return self._formula
 
@@ -83,13 +93,12 @@ class MyNode:
         self._formula = value
 
     @property
-    def sat(self):
-        return self._sat
+    def sub_tests(self):
+        return self._sub_tests
 
-    @sat.setter
-    def sat(self, value):
-        assert(0 == value or 1 == value)
-        self._sat = value
+    @sub_tests.setter
+    def sub_tests(self, value):
+        self._sub_tests = value
 
 
 class TreeNode(MyNode, NodeMixin):
@@ -175,6 +184,7 @@ def main():
                         subtree_root = node
                         id_ctr = id_ctr + 1
 
+                    subtree_root.sub_tests.append(leaf_node_name)
                     depth = depth+1
 
         # Finished constructing tree, now coalesce spurious nodes.
@@ -208,7 +218,7 @@ def main():
                 node.perf = get_perf_variability(node)
                 assign_tags(node)
 
-        # Now, let's coalesce nodes with no perf difference!
+        # Now, let's coalesce nodes perf variability less than input resolution!
         for node in list(PostOrderIter(tree_root)):
             if(not node.is_leaf and node.perf < perf_resolution):
                 children = list(node.children)
@@ -335,9 +345,13 @@ def node_identifier_fn(node):
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
             node.name, node.id, node.depth, node.perf)
-    tag = str(node.tags)[1:-1]
+    tag = str(node.tags)[1:-1]  # Removes the square brackets around the list
     tag = tag.replace(", ", "\n")
     identifier += "\n%s" % (tag)
+    if(node.is_leaf and not node.name.startswith("test")):
+        tests = str(node.sub_tests)[1:-1]
+        tests = tests.replace(", ", "\n")
+        identifier += "\n%s" % (tests)
     return identifier
 
 
