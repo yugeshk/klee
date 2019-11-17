@@ -106,6 +106,7 @@ leaf_tags = list()
 all_tag_prefixes = list()
 perf_var = {}
 perf_formula_var = {}
+merged_tuples = list()
 
 tree_root = TreeNode("ROOT", -1, -1)
 
@@ -226,9 +227,20 @@ def main():
                     children = list(node.children)
                     # Only dealing with binary trees
                     assert(len(children) == 2)
-                    print(node.name)
+                    merged_tuples.clear()
                     if(compare_trees(children[0], children[1])):
-                        print(node.name)
+                        print(merged_tuples)
+                        for pair in merged_tuples:
+                            # Sanity check that the tuple always has a node from child zero and then child one.
+                            # Mostly redundant, but left here in any case
+                            assert(len(findall_by_attr(children[0], pair[0], name='name')) == 1
+                                   and len(findall_by_attr(children[1], pair[1], name='name')) == 1)
+                            final = findall_by_attr(
+                                children[0], pair[0], name='name')[0]
+                            merged_in = findall_by_attr(
+                                children[1], pair[1], name='name')[0]
+                            merged_nodes = merged_in.sub_tests
+                            final.sub_tests.append(merged_nodes)
                         children[1].parent = None
                         changed = 1
 
@@ -312,20 +324,21 @@ def main():
 
 def compare_trees(node1, node2):
     print("Call to compare trees with %s, %s" % (node1.name, node2.name))
+    print(merged_tuples)
     if(len(node1.children) != len(node2.children)):
-        return 0
+        check = 0
     elif(node1.is_leaf):
         # Node2 is also a leaf node because of above check
         if(abs(node1.perf-node2.perf) < perf_resolution):
-            return 1
+            check = 1
         else:
-            return 0
+            check = 0
     else:  # Can have one child because coalescing is done later
         if(len(node1.children) == 1):
             if(compare_trees(node1.children[0], node2.children[0])):
-                return 1
+                check = 1
             else:
-                return 0
+                check = 0
         else:
             if(
                 (compare_trees(node1.children[0], node2.children[0]) and compare_trees(
@@ -334,9 +347,15 @@ def compare_trees(node1, node2):
                     (compare_trees(node1.children[0], node2.children[1]) and compare_trees(
                         node1.children[1], node2.children[0]))
             ):
-                return 1
+                check = 1
             else:
-                return 0
+                check = 2
+    if(check == 1):
+        merged_tuples.append((node1.name, node2.name))
+        return 1
+    elif(check == 2):  # Only need to clear here, when both matching possibilities are deemed impossible
+        merged_tuples.clear()
+    return 0
 
 
 def check_for_clarity(formula_var):
@@ -386,12 +405,10 @@ def node_colour_fn(node):
 
 def node_identifier_fn(node):
     if(node.is_leaf):
-        if(node.name.startswith("test")):
-            identifier = '%s' % (node.name)
-        else:
-            tests = str(node.sub_tests)[1:-1]
-            tests = tests.replace(", ", "\n")
-            identifier = '%s' % (tests)
+        identifier = 'Name: %s\n' % (node.name)
+        tests = str(node.sub_tests)[1:-1]
+        tests = tests.replace(", ", "\n")
+        identifier += '%s' % (tests)
 
         identifier += '\nPerf = %s' % (node.perf)
         identifier += '\nFormula = %s' % (node.formula)
