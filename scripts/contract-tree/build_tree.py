@@ -229,7 +229,7 @@ def main():
                     assert(len(children) == 2)
                     merged_tuples.clear()
                     if(compare_trees(children[0], children[1])):
-                        print(merged_tuples)
+                        # print(merged_tuples)
                         for pair in merged_tuples:
                             # Sanity check that the tuple always has a node from child zero and then child one.
                             # Mostly redundant, but left here in any case
@@ -323,8 +323,8 @@ def main():
 
 
 def compare_trees(node1, node2):
-    print("Call to compare trees with %s, %s" % (node1.name, node2.name))
-    print(merged_tuples)
+    # print("Call to compare trees with %s, %s" % (node1.name, node2.name))
+    # print(merged_tuples)
     if(len(node1.children) != len(node2.children)):
         check = 0
     elif(node1.is_leaf):
