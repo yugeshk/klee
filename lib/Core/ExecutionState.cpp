@@ -1266,46 +1266,21 @@ bool equalContexts(const std::vector<ref<Expr>> &a,
 }
 
 bool CallInfo::eq(const CallInfo &other) const {
-  int same_name = 0;
-  if (f->getName() == other.f->getName()) {
-    same_name = 1;
-  }
 
   if (args.size() != other.args.size()) {
-    if (same_name) {
-      std::cout << "Function with name " << f->getName().data()
-                << " differs in args size\n";
-    }
     return false;
   }
 
   for (unsigned i = 0; i < args.size(); ++i) {
     if (!args[i].eq(other.args[i])) {
-      if (same_name) {
-        std::cout << "Function with name " << f->getName().data()
-                  << " differs in args value\n";
-      }
       return false;
     }
   }
 
-  bool check = f == other.f && ret.eq(other.ret);
-  if (!check && same_name) {
-    std::cout << "Function with name " << f->getName().data()
-              << " differs in function/return value \n";
-  }
-  if (!check) {
-    return check;
-  }
-
-  check == equalContexts(callContext, other.callContext) &&
-      equalContexts(returnContext, other.returnContext) &&
-      returned == other.returned;
-  if (!check && same_name) {
-    std::cout << "Function with name " << f->getName().data()
-              << " differs in contexts\n";
-  }
-  return check;
+  return f == other.f && ret.eq(other.ret) &&
+         equalContexts(callContext, other.callContext) &&
+         equalContexts(returnContext, other.returnContext) &&
+         returned == other.returned;
 }
 
 bool CallInfo::sameInvocation(const CallInfo *other) const {
