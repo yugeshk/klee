@@ -80,7 +80,7 @@ typedef struct {
 std::map<std::pair<std::string, int>, klee::ref<klee::Expr>>
     subcontract_constraints;
 
-PCVAbstraction PCVAbs = FN_CALLS;
+PCVAbstraction PCVAbs = LOOP_CTRS;
 
 call_path_t *load_call_path(std::string file_name,
                             std::vector<std::string> expressions_str,
@@ -174,8 +174,6 @@ call_path_t *load_call_path(std::string file_name,
                                         in
                                          VigNAT*/
                 kQuery = kQuery.substr(0, kQuery.length() - 1) + "\n[\n";
-                std::cout << "[HINT] Found this in call path file" << file_name
-                          << std::endl;
 
                 for (auto eit : expressions_str) {
                   kQuery += "\n         " + eit;
@@ -692,6 +690,7 @@ std::map<std::string, long> process_candidate(
   if (total_performance.empty()) {
     for (auto metric : contract_get_metrics()) {
       total_performance[metric] = 0;
+      total_performance_formula[metric] = {{"constant", 0}};
     }
   }
 
@@ -720,6 +719,7 @@ int main(int argc, char **argv, char **envp) {
 
   // Get contract symbols
   LOAD_SYMBOL(contract, contract_init);
+  LOAD_SYMBOL(contract, contract_get_metrics);
   LOAD_SYMBOL(contract, contract_get_user_variables);
   LOAD_SYMBOL(contract, contract_get_optimization_variables);
   LOAD_SYMBOL(contract, contract_get_contracts);
@@ -847,6 +847,11 @@ int main(int argc, char **argv, char **envp) {
   std::map<std::string, long> max_performance;
   std::map<std::string, std::map<std::string, std::set<int>>> final_cstate;
   std::map<std::string, perf_formula> max_performance_formula;
+
+  std::set<std::string> metrics = contract_get_metrics();
+  for (auto metric : metrics) {
+    max_performance[metric] = -1;
+  }
 
   std::map<initial_var_t, std::set<klee::ref<klee::Expr>>::iterator>::iterator
       pos;
