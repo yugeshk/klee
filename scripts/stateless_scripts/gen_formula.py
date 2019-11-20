@@ -51,19 +51,21 @@ def main():
 
     with open(op_file, "w") as op:
         for key, val in stateful_perf.items():
-            for metric in metrics:
-                formula = val[metric].split('+')
-                formula.sort(key=formula_priority_fn)
-                formula.reverse()
-                final_formula = ""
-                for term in formula:
-                    term = term.strip()
-                    if("*" not in term):
-                        term = str(int(term)+int(stateless_perf[key][metric]))
-                    if(final_formula != ""):
-                        final_formula = final_formula + " + "
-                    final_formula = final_formula + term
-                op.write("%s,%s,%s\n" % (key, metric, final_formula))
+            if(key in stateless_perf):
+                for metric in metrics:
+                    formula = val[metric].split('+')
+                    formula.sort(key=formula_priority_fn)
+                    formula.reverse()
+                    final_formula = ""
+                    for term in formula:
+                        term = term.strip()
+                        if("*" not in term):
+                            term = str(
+                                int(term)+int(stateless_perf[key][metric]))
+                        if(final_formula != ""):
+                            final_formula = final_formula + " + "
+                        final_formula = final_formula + term
+                    op.write("%s,%s,%s\n" % (key, metric, final_formula))
 
 
 main()
