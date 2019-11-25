@@ -23,6 +23,7 @@
 #include "klee/Internal/Support/PrintVersion.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Interpreter.h"
+#include "klee/Solver.h"
 #include "klee/Statistics.h"
 #include "klee/util/ExprPPrinter.h"
 
@@ -56,7 +57,6 @@
 #include <cerrno>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <iterator>
 #include <list>
 #include <sstream>
@@ -161,6 +161,11 @@ cl::opt<bool> DumpCallTraceTree(
              "generated according to klee_trace_*."),
     cl::init(false));
 
+cl::opt<bool> DumpConstraintTree("dump-constraint-tree",
+                                 cl::desc("Compute and dump the meta-info for "
+                                          "the tree formed by the constraints"),
+                                 cl::init(false));
+
 cl::opt<bool> DumpCallTraces(
     "dump-call-traces",
     cl::desc("Dump call traces into separate file each. The call "
@@ -256,7 +261,20 @@ public:
   int refCount;
 };
 
-/***/
+class ConstraintTree {
+  /* Poorly named, it only stores meta information for the tree */
+  std::map<int, ConstraintManager> seen_tests;
+  std::map<std::pair<int, int>, int> overlap_depth;
+  std::map<std::pair<int, int>, ref<Expr>> branch;
+
+  /* Key is a pair of test-cases. Value is the depth at which they diverge and
+   * the constraint on which they diverge */
+
+public:
+  ConstraintTree() : seen_tests(), overlap_depth(), branch(){};
+  void addTest(int id, ExecutionState state);
+  void dumpConstraintTree(llvm::raw_ostream *op_file);
+};
 
 class KleeHandler : public InterpreterHandler {
 private:
@@ -277,6 +295,7 @@ private:
   char **m_argv;
 
   CallTree m_callTree;
+  ConstraintTree m_constraintTree;
 
 public:
   KleeHandler(int argc, char **argv);
@@ -310,6 +329,7 @@ public:
 
   void dumpCallPathPrefixes();
   void dumpCallPathTree();
+  void dumpConstraintTree();
   void dumpCallPath(const ExecutionState &state, llvm::raw_ostream *file);
 };
 
@@ -550,6 +570,10 @@ void KleeHandler::processTestCase(const ExecutionState &state,
             openOutputFile(getTestFilename("call_path", id));
         dumpCallPath(state, trace_file);
         delete trace_file;
+      }
+
+      if (DumpConstraintTree) {
+        m_constraintTree.addTest(id, state);
       }
 
       for (unsigned i = 0; i < b.numObjects; i++)
@@ -996,6 +1020,13 @@ void KleeHandler::dumpCallPathTree() {
   delete calls_file;
 }
 
+void KleeHandler::dumpConstraintTree() {
+  std::string filename = "constraint-tree.txt";
+  llvm::raw_ostream *tree_file = this->openOutputFile(filename);
+  m_constraintTree.dumpConstraintTree(tree_file);
+  delete tree_file;
+}
+
 void KleeHandler::dumpCallPath(const ExecutionState &state,
                                llvm::raw_ostream *file) {
   std::vector<klee::ref<klee::Expr>> evalExprs;
@@ -1189,7 +1220,6 @@ void CallTree::addCallPath(std::vector<CallInfo>::const_iterator path_begin,
         n->tip.call = *path_begin;
         n->tip.path_id = path_id;
         n->tip.is_duplicate = 1;
-        std::cout << "Leaf node for test " << path_id << " is duplicate\n";
       } else {
 
         (*i)->addCallPath(next, path_end, path_id);
@@ -1464,6 +1494,48 @@ void CallTree::dumpCallPrefixesSExpr(std::list<CallInfo> accumulated_prefix,
     accumulated_prefix.push_back((*ci)->tip.call);
     (*ci)->dumpCallPrefixesSExpr(accumulated_prefix, fileOpener);
     accumulated_prefix.pop_back();
+  }
+}
+
+void ConstraintTree::addTest(int id, ExecutionState state) {
+
+  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
+  assert(solver);
+  solver = createCexCachingSolver(solver);
+  solver = createCachingSolver(solver);
+  solver = createIndependentSolver(solver);
+
+  for (auto it : seen_tests) {
+
+    std::pair<int, int> test_pair = std::minmax(id, it.first);
+    ConstraintManager constraints(state.constraints);
+    ConstraintManager::constraint_iterator cit = it.second.begin();
+    bool result;
+    uint i; /* Needed for assert*/
+    for (i = 0; i < it.second.size(); i++, cit++) {
+      klee::Query sat_query(constraints, *cit);
+      result = false;
+      bool success = solver->mayBeTrue(sat_query, result);
+      assert(success);
+      if (result) {
+        constraints.addConstraint(*cit);
+      }
+
+      else {
+        overlap_depth.insert({test_pair, i});
+        branch.insert({test_pair, *cit});
+        break;
+      }
+    }
+    assert(i < it.second.size() && "Trying to add duplicate test");
+  }
+  seen_tests.insert({id, state.constraints});
+}
+
+void ConstraintTree::dumpConstraintTree(llvm::raw_ostream *op_file) {
+  for (auto it : overlap_depth) {
+    *op_file << it.first.first << "," << it.first.second << "," << it.second
+             << "\n";
   }
 }
 
@@ -2244,6 +2316,9 @@ int main(int argc, char **argv, char **envp) {
 
     if (DumpCallTraceTree)
       handler->dumpCallPathTree();
+
+    if (DumpConstraintTree)
+      handler->dumpConstraintTree();
 
     while (!seeds.empty()) {
       kTest_free(seeds.back());
