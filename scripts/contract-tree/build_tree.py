@@ -119,104 +119,48 @@ def main():
     get_traces_tags()
     get_traces_perf_formula()
 
-    with open(tree_file, 'r') as f:
-        id_ctr = 0
-        for line in f:
-            text = line.rstrip()
-            if(tree_type == "call-tree"):
-                assert(text[len(text)-1] == ',')
-                text = text[:-1]
-                sequence = text.split(',')
-                subtree_root = tree_root
-                depth = 0
-                for node_id in sequence:
+    build_tree(tree_file, tree_type)
 
-                    children = list(subtree_root.children)
-                    next_hop = next(
-                        (x for x in children if x.id == node_id and x.depth == depth), None)
+    # Finished constructing tree, now coalesce spurious nodes.
+    for node in list(PostOrderIter(tree_root))[:]:
 
-                    if(next_hop):
-                        subtree_root = next_hop
-                    else:
-                        if(depth == (len(sequence)-1)):  # Leaf Node
-                            node_name = "test"+f"{int(node_id):06d}"
-                        else:
-                            node_name = "call"
-
-                        node = TreeNode(node_name, node_id, depth,
-                                        parent=subtree_root)
-                        subtree_root = node
-
-                    depth = depth+1
-
-            elif(tree_type == "full-tree"):
-                index = find_nth(text, ":", 1)
-                leaf_id = text[0:index]
-                text = text[index+1:]
-                leaf_node_name = "test"+f"{int(leaf_id):06d}"
-                if(leaf_node_name in traces_perf):
-                    print("inserting node %s" % (leaf_node_name))
-                    sequence = text.split(',')
-                    subtree_root = tree_root
-                    depth = 0
-                    for node_id in sequence:
-                        children = list(subtree_root.children)
-                        next_hop = next(
-                            (x for x in children if x.id == node_id and x.depth == depth), None)
-                        if(next_hop):
-                            subtree_root = next_hop
-                        else:
-                            if(depth == (len(sequence)-1)):  # Leaf Node
-                                node_name = leaf_node_name
-                            else:
-                                node_name = "branch"+f"{int(id_ctr):06d}"
-
-                            node = TreeNode(node_name, node_id, depth,
-                                            parent=subtree_root)
-                            subtree_root = node
-                            id_ctr = id_ctr + 1
-
-                        subtree_root.sub_tests.append(leaf_node_name)
-                        depth = depth+1
-
-        # Finished constructing tree, now coalesce spurious nodes.
-        for node in list(PostOrderIter(tree_root))[:]:
-
-            while(len(node.siblings) == 0):
-                # We do not want to coalesce the root or the first node
-                if(node.parent == tree_root or node.is_root):
-                    break
-                else:
-                    curr_parent = node.parent
-                    new_parent = curr_parent.parent
-                    node.parent = new_parent
-                    curr_parent.parent = None
-
-        # Let's assign tags and performance resolution now
-        for node in list(PostOrderIter(tree_root)):
-            if(node.is_leaf):
-                node.perf = traces_perf[node.name]
-                node.formula = traces_perf_formula[node.name]
-                if(node.name in traces_tags):
-                    node.tags = traces_tags[node.name]
-
+        while(len(node.siblings) == 0):
+            # We do not want to coalesce the root or the first node
+            if(node.parent == tree_root or node.is_root):
+                break
             else:
-                node.perf = get_perf_variability(node)
-                assign_tags(node)
+                curr_parent = node.parent
+                new_parent = curr_parent.parent
+                node.parent = new_parent
+                curr_parent.parent = None
 
-        # Now, let's coalesce nodes perf variability less than input resolution!
-        for node in list(PostOrderIter(tree_root)):
-            if(not node.is_leaf and node.perf < perf_resolution):
-                children = list(node.children)
-                children_perf = list(child.perf for child in children)
-                node.perf = int((max(children_perf) + min(children_perf))/2)
-                # TODO:HACK HACK HACK. Needs actual coalescing
-                node.formula = children[0].formula
-                for child in children:
-                    child.parent = None
+    # Let's assign tags and performance resolution now
+    for node in list(PostOrderIter(tree_root)):
+        if(node.is_leaf):
+            node.perf = traces_perf[node.name]
+            node.formula = traces_perf_formula[node.name]
+            if(node.name in traces_tags):
+                node.tags = traces_tags[node.name]
 
-        # Now, let's remove spurious, perf-unrelated branching.
-        # This is an iterative process which will repeat until we hit a fixed point
+        else:
+            node.perf = get_perf_variability(node)
+            assign_tags(node)
+
+    # Now, let's coalesce nodes perf variability less than input resolution!
+    for node in list(PostOrderIter(tree_root)):
+        if(not node.is_leaf and node.perf < perf_resolution):
+            children = list(node.children)
+            children_perf = list(child.perf for child in children)
+            node.perf = int((max(children_perf) + min(children_perf))/2)
+            # TODO:HACK HACK HACK. Needs actual coalescing
+            node.formula = children[0].formula
+            for child in children:
+                child.parent = None
+
+    # Now, let's remove spurious, perf-unrelated branching.
+    # This is an iterative process which will repeat until we hit a fixed point
+    # Currently only works for the full-tree and not the call tree (we don't care about it anyway)
+    if(tree_type == "full_tree"):
         changed = 1
         while(changed):
             changed = 0
@@ -259,67 +203,67 @@ def main():
                             curr_parent.parent = None
                             changed = 1
 
-        # Get perf variability, including formula variability for each tag
-        for tag in all_tag_prefixes:
-            perf_var[tuple(tag)] = set()
-            perf_formula_var[tuple(tag)] = set()
+    # Get perf variability, including formula variability for each tag
+    for tag in all_tag_prefixes:
+        perf_var[tuple(tag)] = set()
+        perf_formula_var[tuple(tag)] = set()
 
-        for trace, perf in traces_perf.items():
-            if trace in traces_tags:
+    for trace, perf in traces_perf.items():
+        if trace in traces_tags:
+            for x in range(1, len(traces_tags[trace])+1):
+                perf_var[tuple(traces_tags[trace][0:x])].add(perf)
+            if(trace in traces_perf_formula):
                 for x in range(1, len(traces_tags[trace])+1):
-                    perf_var[tuple(traces_tags[trace][0:x])].add(perf)
-                if(trace in traces_perf_formula):
-                    for x in range(1, len(traces_tags[trace])+1):
-                        perf_formula_var[tuple(traces_tags[trace][0:x])].add(
-                            traces_perf_formula[trace])
+                    perf_formula_var[tuple(traces_tags[trace][0:x])].add(
+                        traces_perf_formula[trace])
 
-        with open(op_var_file, "w") as op:
-            op.write("#Packet Class #Perf-Variability\n")
-            for tag in all_tag_prefixes:
-                if(len(perf_var[tuple(tag)])):
-                    op.write("%s %d\n" %
-                             (tag, (max(perf_var[tuple(tag)])
-                                    - min(perf_var[tuple(tag)]))))
+    with open(op_var_file, "w") as op:
+        op.write("#Packet Class #Perf-Variability\n")
+        for tag in all_tag_prefixes:
+            if(len(perf_var[tuple(tag)])):
+                op.write("%s %d\n" %
+                         (tag, (max(perf_var[tuple(tag)])
+                                - min(perf_var[tuple(tag)]))))
 
-        with open(op_formula_file, "w") as op:
-            op.write("#Tag #Formula-Variability\n")
-            for tag in all_tag_prefixes:
-                if(check_for_clarity(perf_formula_var[tuple(tag)])):
-                    op.write("%s Clarity was caught\n" % (tag))
-                else:
-                    op.write("%s Wild Clarity fled\n" % (tag))
+    with open(op_formula_file, "w") as op:
+        op.write("#Tag #Formula-Variability\n")
+        for tag in all_tag_prefixes:
+            if(check_for_clarity(perf_formula_var[tuple(tag)])):
+                op.write("%s Clarity was caught\n" % (tag))
+            else:
+                op.write("%s Wild Clarity fled\n" % (tag))
 
-            # Pretty printing the contract
-            op.write("\n\nContract with Formulae\n\n")
-            column1 = "#Packet Class"
-            column2 = "#Possible Formulae"
-            line_break = "-" * 200 + "\n"
-            op.write("%s | \t%s \n\n" %
-                     ("{:<100}".format(column1), column2))
-            op.write(line_break)
-            for tag in all_tag_prefixes:  # Only input classes that extend upto the leaf
-                ctr = 0
-                for formula in perf_formula_var[tuple(tag)]:
-                    if(ctr == 0):
-                        column1 = str(tag)[1:-1]
-                    elif(ctr == 1):
-                        column1 = "Perf Var = %d" % ((max(perf_var[tuple(tag)])
-                                                      - min(perf_var[tuple(tag)])))
-                    elif(ctr == 2):
-                        if(check_for_clarity(perf_formula_var[tuple(tag)])):
-                            column1 = "Clarity was caught"
-                        else:
-                            column1 = "Wild Clarity fled"
+        # Pretty printing the contract
+        op.write("\n\nContract with Formulae\n\n")
+        column1 = "#Packet Class"
+        column2 = "#Possible Formulae"
+        line_break = "-" * 200 + "\n"
+        op.write("%s | \t%s \n\n" %
+                 ("{:<100}".format(column1), column2))
+        op.write(line_break)
+        for tag in all_tag_prefixes:  # Only input classes that extend upto the leaf
+            ctr = 0
+            for formula in perf_formula_var[tuple(tag)]:
+                if(ctr == 0):
+                    column1 = str(tag)[1:-1]
+                elif(ctr == 1):
+                    column1 = "Perf Var = %d" % ((max(perf_var[tuple(tag)])
+                                                  - min(perf_var[tuple(tag)])))
+                elif(ctr == 2):
+                    if(check_for_clarity(perf_formula_var[tuple(tag)])):
+                        column1 = "Clarity was caught"
                     else:
-                        column1 = ""
-                    op.write("%s |\t%s \n" %
-                             ("{:<100}".format(column1), formula))
-                    ctr = ctr + 1
-                op.write(line_break)
+                        column1 = "Wild Clarity fled"
+                else:
+                    column1 = ""
+                op.write("%s |\t%s \n" %
+                         ("{:<100}".format(column1), formula))
+                ctr = ctr + 1
+            op.write(line_break)
 
-        DotExporter(tree_root,
-                    nodenamefunc=node_identifier_fn,
-                    nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+    DotExporter(tree_root,
+                nodenamefunc=node_identifier_fn,
+                nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
 
 
 def compare_trees(node1, node2):
@@ -428,6 +372,85 @@ def print_tree(root):
     for pre, _, node in RenderTree(root):
         treestr = "%s%s" % (pre, node.name)
         sys.stdout.buffer.write(treestr.encode('utf-8')+b"\n")
+
+
+def build_call_tree(tree_file):
+    global tree_root
+    with open(tree_file, 'r') as f:
+        for line in f:
+            text = line.rstrip()
+            assert(text[len(text)-1] == ',')
+            text = text[:-1]
+            sequence = text.split(',')
+            leaf_node_name = "test"+f"{int(sequence[len(sequence)-1]):06d}"
+            if(leaf_node_name in traces_perf):
+                print("inserting node %s" % (leaf_node_name))
+                subtree_root = tree_root
+                depth = 0
+                for node_id in sequence:
+
+                    children = list(subtree_root.children)
+                    next_hop = next(
+                        (x for x in children if x.id == node_id and x.depth == depth), None)
+
+                    if(next_hop):
+                        subtree_root = next_hop
+                    else:
+                        if(depth == (len(sequence)-1)):  # Leaf Node
+                            node_name = leaf_node_name
+                        else:
+                            node_name = "call"
+
+                        node = TreeNode(node_name, node_id, depth,
+                                        parent=subtree_root)
+                        subtree_root = node
+
+                    depth = depth+1
+
+
+def build_full_tree(tree_file):
+    global tree_root
+    with open(tree_file, 'r') as f:
+        id_ctr = 0
+        for line in f:
+            text = line.rstrip()
+            index = find_nth(text, ":", 1)
+            leaf_id = text[0:index]
+            text = text[index+1:]
+            leaf_node_name = "test"+f"{int(leaf_id):06d}"
+            if(leaf_node_name in traces_perf):
+                print("inserting node %s" % (leaf_node_name))
+                sequence = text.split(',')
+                subtree_root = tree_root
+                depth = 0
+                for node_id in sequence:
+                    children = list(subtree_root.children)
+                    next_hop = next(
+                        (x for x in children if x.id == node_id and x.depth == depth), None)
+                    if(next_hop):
+                        subtree_root = next_hop
+                    else:
+                        if(depth == (len(sequence)-1)):  # Leaf Node
+                            node_name = leaf_node_name
+                        else:
+                            node_name = "branch"+f"{int(id_ctr):06d}"
+
+                        node = TreeNode(node_name, node_id, depth,
+                                        parent=subtree_root)
+                        subtree_root = node
+                        id_ctr = id_ctr + 1
+
+                    subtree_root.sub_tests.append(leaf_node_name)
+                    depth = depth+1
+
+
+def build_tree(tree_file, tree_type):
+    if(tree_type == "call-tree"):
+        build_call_tree(tree_file)
+    elif(tree_type == "full-tree"):
+        build_full_tree(tree_file)
+    else:
+        assert(0 and "Unknown tree option")
 
 
 def get_traces_perf():
