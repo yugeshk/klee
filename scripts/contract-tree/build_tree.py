@@ -4,6 +4,8 @@
 import sys
 import string
 import os
+import math
+import operator
 
 # https://anytree.readthedocs.io/en/latest/index.html
 from anytree import NodeMixin, RenderTree, PostOrderIter
@@ -107,6 +109,7 @@ all_tag_prefixes = list()
 perf_var = {}
 perf_formula_var = {}
 merged_tuples = list()
+prefix_match_lengths = [[]]
 
 tree_root = TreeNode("ROOT", -1, -1)
 
@@ -114,7 +117,8 @@ tree_root = TreeNode("ROOT", -1, -1)
 def main():
     global tree_root
 
-    assert(tree_type == "full-tree" or tree_type == "call-tree")
+    assert(tree_type == "full-tree" or tree_type ==
+           "call-tree" or tree_type == "constraint-tree")
     get_traces_perf()
     get_traces_tags()
     get_traces_perf_formula()
@@ -160,7 +164,7 @@ def main():
     # Now, let's remove spurious, perf-unrelated branching.
     # This is an iterative process which will repeat until we hit a fixed point
     # Currently only works for the full-tree and not the call tree (we don't care about it anyway)
-    if(tree_type == "full_tree"):
+    if(tree_type == "full-tree" or tree_type == "constraint-tree"):
         changed = 1
         while(changed):
             changed = 0
@@ -434,14 +438,107 @@ def build_full_tree(tree_file):
                             node_name = leaf_node_name
                         else:
                             node_name = "branch"+f"{int(id_ctr):06d}"
+                            id_ctr = id_ctr + 1
 
                         node = TreeNode(node_name, node_id, depth,
                                         parent=subtree_root)
                         subtree_root = node
-                        id_ctr = id_ctr + 1
 
                     subtree_root.sub_tests.append(leaf_node_name)
                     depth = depth+1
+
+
+def find_lpm_node(root, node_id, lpm, leaf_id):
+
+    if(lpm == 0):  # Small hack, since it doesn't fit in well with the while loop
+        return root
+
+    node_name = "test"+f"{node_id:06d}"
+    leaf_node_name = "test"+f"{leaf_id:06d}"
+    while(lpm >= 0):
+        lpm = lpm - 1
+        children = list(root.children)
+        root.sub_tests.append(leaf_node_name)
+        print("Looking for %s in subtree with root %s" %
+              (node_name, root.name))
+        root = next((x for x in children if node_name in x.sub_tests), None)
+        assert(root != None)
+
+    root.sub_tests.append(leaf_node_name)  # Needs to be done one last time
+
+    return root
+
+
+def del_node(node):
+    while(1):
+        if(len(node.siblings) > 0):
+            node.parent = None
+            break
+        else:
+            parent = node.parent
+            node.parent = None
+            node = parent
+
+
+def build_constraint_tree(tree_file):
+    global tree_root
+    global prefix_match_lengths
+    # stupid code to get length of file. Makes everything much easier
+    ctr = 0
+    with open(tree_file, 'r') as f:
+        for line in f:
+            ctr = ctr + 1
+
+    num_lines = int(math.sqrt(2*ctr))
+    prefix_match_lengths = [
+        [-1 for i in range(num_lines)] for i in range(num_lines)]
+    with open(tree_file, 'r') as f:
+        for line in f:
+            text = line.rstrip()
+            text = text.split(',')
+            assert(len(text) == 3)
+            text = [int(x) for x in text]
+            prefix_match_lengths[text[0]][text[1]] = text[2]
+            prefix_match_lengths[text[1]][text[0]] = text[2]
+
+    id_ctr = 0
+    for i in range(num_lines):  # Hack because last node is broken
+        if(i != 0):
+            lpm_index, lpm = max(
+                enumerate(prefix_match_lengths[i][0:i]), key=operator.itemgetter(1))
+        else:
+            lpm = 0
+            lpm_index = 0
+
+        subtree_root = tree_root
+        subtree_root = find_lpm_node(subtree_root, lpm_index, lpm, i)
+        rem_len = prefix_match_lengths[i][i] - lpm
+        leaf_node_name = "test"+f"{i:06d}"
+        print("inserting node %s" % (leaf_node_name))
+        depth = lpm
+        while(rem_len >= 0):
+            id = len(subtree_root.children)
+            assert(id <= 1)
+            if(rem_len == 0):
+                node_name = leaf_node_name
+            else:
+                node_name = "branch"+f"{int(id_ctr):06d}"
+                id_ctr = id_ctr + 1
+            node = TreeNode(node_name, id, depth, parent=subtree_root)
+            print("Inserting %s with parent %s" %
+                  (node_name, subtree_root.name))
+            subtree_root = node
+            subtree_root.sub_tests.append(leaf_node_name)
+            depth = depth + 1
+            rem_len = rem_len - 1
+
+    # Extra hack for constraint tree, to retain assumptions made during other tree formations
+    for i in range(num_lines):
+        leaf_node_name = "test"+f"{i:06d}"
+        if(leaf_node_name not in traces_perf):
+            leaf_node = find(
+                tree_root, lambda node: node.name == leaf_node_name)
+            del_node(leaf_node)
 
 
 def build_tree(tree_file, tree_type):
@@ -449,6 +546,8 @@ def build_tree(tree_file, tree_type):
         build_call_tree(tree_file)
     elif(tree_type == "full-tree"):
         build_full_tree(tree_file)
+    elif(tree_type == "constraint-tree"):
+        build_constraint_tree(tree_file)
     else:
         assert(0 and "Unknown tree option")
 

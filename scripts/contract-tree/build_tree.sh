@@ -7,7 +7,7 @@ TREE_TYPE=$1
 RESOLUTION=$2
 TRACES_DIR=${3:-klee-last}
 
-if [ "$TREE_TYPE" != "call-tree" ] && [ "$TREE_TYPE" != "full-tree" ]; then
+if [ "$TREE_TYPE" != "call-tree" ] && [ "$TREE_TYPE" != "full-tree" ] && [ "$TREE_TYPE" != "constraint-tree" ]; then
   echo "Unsupported tree type: $TREE_TYPE"
   exit
 fi
@@ -18,8 +18,10 @@ grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{p
 if [ "$TREE_TYPE" == "full-tree" ]; then
   TREE_FILE="full-tree.txt"
   python $KLEE_DIR/scripts/contract-tree/rem-prefix.py ./ $TREE_FILE
-else
+elif [ "$TREE_TYPE" == "call-tree" ]; then
   TREE_FILE="call-tree.txt"
+else 
+  TREE_FILE="constraint-tree.txt"
 fi
 
 # METRICS=("instruction count" "memory instructions" "execution cycles")
