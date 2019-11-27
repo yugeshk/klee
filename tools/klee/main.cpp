@@ -491,7 +491,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
     double start_time = util::getWallTime();
 
-    unsigned id = ++m_numTotalTests;
+    unsigned id = m_numTotalTests++;
 
     if (success) {
       KTest b;
@@ -1508,6 +1508,8 @@ void ConstraintTree::addTest(int id, ExecutionState state) {
   for (auto it : seen_tests) {
 
     std::pair<int, int> test_pair = std::minmax(id, it.first);
+
+    /* Iterating through constraints of existing test */
     ConstraintManager constraints(state.constraints);
     ConstraintManager::constraint_iterator cit = it.second.begin();
     bool result;
@@ -1517,18 +1519,31 @@ void ConstraintTree::addTest(int id, ExecutionState state) {
       result = false;
       bool success = solver->mayBeTrue(sat_query, result);
       assert(success);
-      if (result) {
-        constraints.addConstraint(*cit);
-      }
-
-      else {
+      if (!result) {
         overlap_depth.insert({test_pair, i});
         branch.insert({test_pair, *cit});
         break;
       }
     }
     assert(i < it.second.size() && "Trying to add duplicate test");
+    uint depth1 = i;
+
+    /* Now iterate the other way */
+    constraints = it.second;
+    cit = state.constraints.begin();
+    for (i = 0; i < state.constraints.size(); i++, cit++) {
+      klee::Query sat_query(constraints, *cit);
+      result = false;
+      bool success = solver->mayBeTrue(sat_query, result);
+      assert(success);
+      if (!result) {
+        break;
+      }
+    }
+    assert(depth1 == i &&
+           "Tree generation algorithm will fail due to mismatched prefixes");
   }
+  overlap_depth.insert({std::minmax(id, id), state.constraints.size()});
   seen_tests.insert({id, state.constraints});
 }
 
@@ -1536,6 +1551,11 @@ void ConstraintTree::dumpConstraintTree(llvm::raw_ostream *op_file) {
   for (auto it : overlap_depth) {
     *op_file << it.first.first << "," << it.first.second << "," << it.second
              << "\n";
+  }
+  for (auto it : branch) {
+    *op_file << it.first.first << "," << it.first.second << ",";
+    it.second->print(*op_file);
+    *op_file << "\n";
   }
 }
 
