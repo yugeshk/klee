@@ -23,7 +23,7 @@ using namespace klee;
 namespace {
   llvm::cl::opt<bool>
   RewriteEqualities("rewrite-equalities",
-		    llvm::cl::init(true),
+		    llvm::cl::init(false),
 		    llvm::cl::desc("Rewrite existing constraints when an equality with a constant is added (default=on)"));
 }
 
