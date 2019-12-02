@@ -265,7 +265,7 @@ class ConstraintTree {
   /* Poorly named, it only stores meta information for the tree */
   std::map<int, ConstraintManager> seen_tests;
   std::map<std::pair<int, int>, int> overlap_depth;
-  std::map<std::pair<int, int>, ref<Expr>> branch;
+  std::map<std::pair<int, int>, std::vector<ref<Expr>>> branch;
 
   /* Key is a pair of test-cases. Value is the depth at which they diverge and
    * the constraint on which they diverge */
@@ -273,7 +273,8 @@ class ConstraintTree {
 public:
   ConstraintTree() : seen_tests(), overlap_depth(), branch(){};
   void addTest(int id, ExecutionState state);
-  void dumpConstraintTree(llvm::raw_ostream *op_file);
+  void dumpConstraintTree(llvm::raw_ostream *tree_file,
+                          llvm::raw_ostream *constraints_file);
 };
 
 class KleeHandler : public InterpreterHandler {
@@ -1023,7 +1024,9 @@ void KleeHandler::dumpCallPathTree() {
 void KleeHandler::dumpConstraintTree() {
   std::string filename = "constraint-tree.txt";
   llvm::raw_ostream *tree_file = this->openOutputFile(filename);
-  m_constraintTree.dumpConstraintTree(tree_file);
+  filename = "constraint-branches.txt";
+  llvm::raw_ostream *constraints_file = this->openOutputFile(filename);
+  m_constraintTree.dumpConstraintTree(tree_file, constraints_file);
   delete tree_file;
 }
 
@@ -1521,10 +1524,12 @@ void ConstraintTree::addTest(int id, ExecutionState state) {
       assert(success);
       if (!result) {
         overlap_depth.insert({test_pair, i});
-        branch.insert({test_pair, *cit});
+        branch.insert({test_pair, std::vector<ref<Expr>>()});
+        branch[test_pair].push_back(*cit);
         break;
       }
     }
+    klee::ref<Expr> branch1 = *cit;
     assert(i < it.second.size() && "Trying to add duplicate test");
     uint depth1 = i;
 
@@ -1542,20 +1547,31 @@ void ConstraintTree::addTest(int id, ExecutionState state) {
     }
     assert(depth1 == i &&
            "Tree generation algorithm will fail due to mismatched prefixes");
+    ConstraintManager branch_constraints;
+    branch_constraints.addConstraint(branch1);
+    klee::Query sat_query(branch_constraints, *cit);
+    result = false;
+    bool success = solver->mayBeTrue(sat_query, result);
+    assert(success);
+    assert(!result && "Branching constraints are not mutually unsat");
+    branch[test_pair].push_back(*cit);
   }
   overlap_depth.insert({std::minmax(id, id), state.constraints.size()});
   seen_tests.insert({id, state.constraints});
 }
 
-void ConstraintTree::dumpConstraintTree(llvm::raw_ostream *op_file) {
+void ConstraintTree::dumpConstraintTree(llvm::raw_ostream *tree_file,
+                                        llvm::raw_ostream *constraints_file) {
   for (auto it : overlap_depth) {
-    *op_file << it.first.first << "," << it.first.second << "," << it.second
-             << "\n";
+    *tree_file << it.first.first << "," << it.first.second << "," << it.second
+               << "\n";
   }
   for (auto it : branch) {
-    *op_file << it.first.first << "," << it.first.second << ",";
-    it.second->print(*op_file);
-    *op_file << "\n";
+    for (auto expr_it : it.second) {
+      *constraints_file << it.first.first << "," << it.first.second << ",";
+      expr_it->print(*constraints_file);
+      *constraints_file << "\n";
+    }
   }
 }
 
