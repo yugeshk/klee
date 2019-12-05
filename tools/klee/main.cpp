@@ -1028,6 +1028,7 @@ void KleeHandler::dumpConstraintTree() {
   llvm::raw_ostream *constraints_file = this->openOutputFile(filename);
   m_constraintTree.dumpConstraintTree(tree_file, constraints_file);
   delete tree_file;
+  delete constraints_file;
 }
 
 void KleeHandler::dumpCallPath(const ExecutionState &state,
