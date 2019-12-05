@@ -20,12 +20,55 @@ formula_file = sys.argv[3]
 perf_metric = sys.argv[4]
 tree_file = sys.argv[5]
 tree_type = sys.argv[6]
-perf_resolution = int(sys.argv[7])
-op_var_file = sys.argv[8]
-op_formula_file = sys.argv[9]
+constraint_file = sys.argv[7]
+perf_resolution = int(sys.argv[8])
+op_var_file = sys.argv[9]
+op_formula_file = sys.argv[10]
+constraint_node = sys.argv[11]
 
 
-class MyNode:
+class Constraint:
+
+    def __init__(self, subject=None, sbranch=None, lbranch=None, sind=None):
+        self._subject = subject
+        self._sbranch = sbranch
+        self._lbranch = lbranch
+        self._sind = sind
+
+    @property
+    def subject(self):
+        return self._subject
+
+    @subject.setter
+    def subject(self, value):
+        self._subject = value
+
+    @property
+    def sbranch(self):
+        return self._sbranch
+
+    @sbranch.setter
+    def sbranch(self, value):
+        self._sbranch = value
+
+    @property
+    def lbranch(self):
+        return self._lbranch
+
+    @lbranch.setter
+    def lbranch(self, value):
+        self._lbranch = value
+
+    @property
+    def sind(self):
+        return self._sind
+
+    @sind.setter
+    def sind(self, value):
+        self._sind = value
+
+
+class MyNode(Constraint):
 
     def __init__(self, name, id, depth):
         self._name = name
@@ -35,6 +78,7 @@ class MyNode:
         self._perf = -1
         self._formula = ""
         self._sub_tests = []
+        self._constraints = Constraint()
 
     @property
     def name(self):
@@ -92,6 +136,14 @@ class MyNode:
     def sub_tests(self, value):
         self._sub_tests = value
 
+    @property
+    def constraints(self):
+        return self._constraints
+
+    @constraints.setter
+    def constraints(self, value):
+        self._constraints = value
+
 
 class TreeNode(MyNode, NodeMixin):
     def __init__(self, name, id, depth, parent=None, children=None):
@@ -110,6 +162,7 @@ perf_var = {}
 perf_formula_var = {}
 merged_tuples = list()
 prefix_match_lengths = [[]]
+prefix_branch_constraints = [[[]]]
 
 tree_root = TreeNode("ROOT", -1, -1)
 
@@ -138,6 +191,12 @@ def main():
                 node.parent = new_parent
                 curr_parent.parent = None
 
+    if(tree_type == "constraint-tree"):
+        # Assigning constraints to each node. Has to be done once we have a binary tree (remove spurious nodes)
+        for node in list(PostOrderIter(tree_root)):
+            if(not node.is_leaf and not node.is_root):
+                node.constraints = get_node_constraints(node)
+
     # Let's assign tags and performance resolution now
     for node in list(PostOrderIter(tree_root)):
         if(node.is_leaf):
@@ -160,10 +219,12 @@ def main():
             node.formula = children[0].formula
             for child in children:
                 child.parent = None
+            node.constraints = Constraint()
 
     # Now, let's remove spurious, perf-unrelated branching.
     # This is an iterative process which will repeat until we hit a fixed point
     # Currently only works for the full-tree and not the call tree (we don't care about it anyway)
+    merged_nodes = list()
     if(tree_type == "full-tree" or tree_type == "constraint-tree"):
         changed = 1
         while(changed):
@@ -177,6 +238,9 @@ def main():
                     assert(len(children) == 2)
                     merged_tuples.clear()
                     if(compare_trees(children[0], children[1])):
+                        assert(compare_node_constraints(
+                            children[0], children[1]) and "Merging children with different constraints")
+                        merged_nodes.append(node)
                         # print(merged_tuples)
                         for pair in merged_tuples:
                             # Sanity check that the tuple always has a node from child zero and then child one.
@@ -187,8 +251,10 @@ def main():
                                 children[0], pair[0], name='name')[0]
                             merged_in = findall_by_attr(
                                 children[1], pair[1], name='name')[0]
-                            merged_nodes = merged_in.sub_tests
-                            final.sub_tests.append(merged_nodes)
+                            final.sub_tests.append(merged_in.sub_tests)
+                            if(final.is_leaf):
+                                final.perf = int(
+                                    (final.perf + merged_in.perf)/2)
                         children[1].parent = None
                         changed = 1
 
@@ -201,11 +267,110 @@ def main():
                         if(node.parent == tree_root or node.is_root):
                             break
                         else:
+                            assert(node.parent in merged_nodes)
+                            merged_nodes.remove(node.parent)
                             curr_parent = node.parent
                             new_parent = curr_parent.parent
                             node.parent = new_parent
                             curr_parent.parent = None
                             changed = 1
+
+    if(tree_type == "constraint-tree"):
+        # Re-assigning constraints to each node after the re-structuring. Some stuff causes a weird change in children order
+        for node in list(PostOrderIter(tree_root)):
+            if(not node.is_leaf and not node.is_root):
+                node.constraints = get_node_constraints(node)
+
+    # Final step - constraint coalescing
+    for node in PostOrderIter(tree_root):
+        if(not node.is_leaf and not node.is_root):
+            children = list(node.children)
+            grandchildren_1 = list(children[0].children)
+            grandchildren_2 = list(children[1].children)
+            # Now constraint coalescing is possible
+            if(len(grandchildren_2) > 1 and len(grandchildren_1) > 1):
+                uncle = None
+                dad = None
+                nephew = None
+                neice = None
+
+                if(compare_node_constraints(children[0], grandchildren_2[0])):
+                    uncle = children[0]
+                    dad = children[1]
+                    nephew = grandchildren_2[0]
+                    neice = grandchildren_2[1]
+                elif(compare_node_constraints(children[0], grandchildren_2[1])):
+                    uncle = children[0]
+                    dad = children[1]
+                    nephew = grandchildren_2[1]
+                    neice = grandchildren_2[0]
+                elif(compare_node_constraints(children[1], grandchildren_1[0])):
+                    uncle = children[1]
+                    dad = children[0]
+                    nephew = grandchildren_1[0]
+                    neice = grandchildren_1[1]
+                elif(compare_node_constraints(children[1], grandchildren_1[1])):
+                    uncle = children[1]
+                    dad = children[0]
+                    nephew = grandchildren_1[1]
+                    neice = grandchildren_1[0]
+
+                if(uncle != None):  # Merging the two nodes if within resolution
+                    if(compare_trees(uncle, nephew)):
+                        for pair in merged_tuples:
+                            # Sanity check that the tuple always has a node from uncle and then nephew.
+                            # Mostly redundant, but left here in any case
+                            assert(len(findall_by_attr(uncle, pair[0], name='name')) == 1
+                                   and len(findall_by_attr(nephew, pair[1], name='name')) == 1)
+                            final = findall_by_attr(
+                                uncle, pair[0], name='name')[0]
+                            merged_in = findall_by_attr(
+                                nephew, pair[1], name='name')[0]
+                            final.sub_tests.append(merged_in.sub_tests)
+                            if(final.is_leaf):
+                                final.perf = int(
+                                    (final.perf + merged_in.perf)/2)
+
+                        # Modify the constraints in the current node
+                        curr_constraints = node.constraints
+                        merged_in_constraints = dad.constraints
+                        dad_ind = children.index(dad)
+                        neice_ind = list(children[dad_ind].children).index(neice)
+                        print(node.name)
+
+                        #Fix the branching
+                        dad.parent = None
+                        nephew.parent = None
+                        neice.parent = node
+                        merged_tuples.clear()
+                        new_neice_ind = list(node.children).index(neice)
+
+
+                        if(curr_constraints.lbranch == merged_in_constraints.lbranch and
+                           (neice_ind + merged_in_constraints.sind)%2 == (dad_ind + curr_constraints.sind)%2):
+                            # This implies that we simply have to and/or the subject and we're good. Since neice is at the end of a double branch (both true or both false)
+                            if(merged_in_constraints.lbranch == "(Eq false"):
+                                if(neice_ind != merged_in_constraints.sind): # Neice was both false
+                                    conjunction = "OR"
+                                    sind = (new_neice_ind + 1) %2 
+                                else:
+                                    conjunction = "AND"  # Neice was both true
+                                    sind = new_neice_ind
+                                subject = curr_constraints.subject + "\n" + conjunction + "\n" + merged_in_constraints.subject
+                                sbranch = curr_constraints.sbranch
+                                lbranch = curr_constraints.lbranch
+                                node.constraints = Constraint(subject, sbranch, lbranch, sind)
+
+                            
+                            else:
+                                assert(0 and "Constraint merging not supported")
+
+                        else:
+                            assert(0 and "Constraint merging not supported")
+
+                        
+
+
 
     # Get perf variability, including formula variability for each tag
     for tag in all_tag_prefixes:
@@ -268,6 +433,27 @@ def main():
     DotExporter(tree_root,
                 nodenamefunc=node_identifier_fn,
                 nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+
+    if(constraint_node != "none"):
+        node = find(
+            tree_root, lambda node: node.name == constraint_node)
+        pretty_print_constraints(node)
+
+
+def pretty_print_constraints(node):
+    assert(len(node.constraints.subject) > 0)
+
+    print("Constraints for node %s" %(node.name))
+    print("Subject is %s" % (node.constraints.subject))
+    print("branch to node %s is %s" %
+          (node.children[node.constraints.sind].name, node.constraints.sbranch))
+    print("branch to node %s is %s" %
+          (node.children[(node.constraints.sind + 1) % 2].name, node.constraints.lbranch))
+
+
+def compare_node_constraints(node1, node2):
+    return (node1.constraints.subject == node2.constraints.subject and
+            node1.constraints.sbranch == node2.constraints.sbranch and node1.constraints.lbranch == node2.constraints.lbranch)
 
 
 def compare_trees(node1, node2):
@@ -345,7 +531,7 @@ def get_perf_variability(node):
 
 def node_colour_fn(node):
     if(node.is_leaf):
-        colour = "fillcolor = red,fontcolor = white"
+        colour = "fillcolor = blue,fontcolor = white"
     else:
         colour = "fillcolor = white,fontcolor = black"
     return colour+",style = filled"
@@ -354,9 +540,9 @@ def node_colour_fn(node):
 def node_identifier_fn(node):
     if(node.is_leaf):
         identifier = 'Name: %s\n' % (node.name)
-        tests = str(node.sub_tests)[1:-1]
-        tests = tests.replace(", ", "\n")
-        identifier += '%s' % (tests)
+        # tests = str(node.sub_tests)[1:-1]
+        # tests = tests.replace(", ", "\n")
+        # identifier += '%s' % (tests)
 
         identifier += '\nPerf = %s' % (node.perf)
         identifier += '\nFormula = %s' % (node.formula)
@@ -388,7 +574,7 @@ def build_call_tree(tree_file):
             sequence = text.split(',')
             leaf_node_name = "test"+f"{int(sequence[len(sequence)-1]):06d}"
             if(leaf_node_name in traces_perf):
-                print("inserting node %s" % (leaf_node_name))
+                # print("inserting node %s" % (leaf_node_name))
                 subtree_root = tree_root
                 depth = 0
                 for node_id in sequence:
@@ -459,8 +645,8 @@ def find_lpm_node(root, node_id, lpm, leaf_id):
         lpm = lpm - 1
         children = list(root.children)
         root.sub_tests.append(leaf_node_name)
-        print("Looking for %s in subtree with root %s" %
-              (node_name, root.name))
+        # print("Looking for %s in subtree with root %s" %
+        #       (node_name, root.name))
         root = next((x for x in children if node_name in x.sub_tests), None)
         assert(root != None)
 
@@ -480,9 +666,49 @@ def del_node(node):
             node = parent
 
 
+def get_node_constraints(node):
+    assert(node != None and "node not present")
+    assert(len(node.children) == 2 and "Leaf node provided")
+    children = list(node.children)
+    assert(len(children[0].sub_tests) > 0 and len(children[1].sub_tests))
+    test1 = int(children[0].sub_tests[0].replace("test", ""))
+    test2 = int(children[1].sub_tests[0].replace("test", ""))
+    constraints = prefix_branch_constraints[test1][test2]
+    # In the above matrix, the first constraint in the list always points to the test with the smaller numeric value.
+    # That is a property of how the constraints are dumped from KLEE
+    if(test1 > test2):  # Need to re-order the list.
+        constraints = [constraints[1], constraints[0]]
+    # Now we can be sure that the constraints are ordered by the children
+    assert(len(constraints) > 0)
+    if(len(constraints[0]) > len(constraints[1])):
+        short_constraint = constraints[1]
+        long_constraint = constraints[0]
+        short_ind = 1
+    else:
+        short_constraint = constraints[0]
+        long_constraint = constraints[1]
+        short_ind = 0
+    long_constraint = long_constraint.replace('\n', '')
+    short_constraint = short_constraint.replace('\n', '')
+    assert(long_constraint.find(short_constraint) != -1)
+
+    short_constraint = short_constraint.rstrip()
+    subject = short_constraint[short_constraint.find("\n")+1:]
+    subject = subject.replace("\n", "")
+    branch1 = short_constraint[0:short_constraint.find("\n")+1].rstrip()
+    if(branch1 == ""):
+        branch1 = "(Eq true"
+    short_constraint = short_constraint.replace("\n", "")
+    long_constraint = long_constraint.replace("\n", "")
+    branch2 = long_constraint[0:long_constraint.find(subject)]
+    branch2 = branch2.replace("\n", " ")
+    return Constraint(subject, branch1, branch2, short_ind)
+
+
 def build_constraint_tree(tree_file):
     global tree_root
     global prefix_match_lengths
+    global prefix_branch_constraints
     # stupid code to get length of file. Makes everything much easier
     ctr = 0
     with open(tree_file, 'r') as f:
@@ -492,6 +718,8 @@ def build_constraint_tree(tree_file):
     num_lines = int(math.sqrt(2*ctr))
     prefix_match_lengths = [
         [-1 for i in range(num_lines)] for i in range(num_lines)]
+    prefix_branch_constraints = [
+        [list() for i in range(num_lines)] for i in range(num_lines)]
     with open(tree_file, 'r') as f:
         for line in f:
             text = line.rstrip()
@@ -501,8 +729,26 @@ def build_constraint_tree(tree_file):
             prefix_match_lengths[text[0]][text[1]] = text[2]
             prefix_match_lengths[text[1]][text[0]] = text[2]
 
+    with open(constraint_file, 'r') as f:
+        acc = ""
+        for line in f:
+            text = line.strip()+"\n"
+            if("," in line):
+                if(acc != ""):
+                    assert(
+                        len(prefix_branch_constraints[index1][index2]) < 2)
+                    prefix_branch_constraints[index1][index2].append(acc)
+                    prefix_branch_constraints[index2][index1].append(acc)
+                text = text.split(",")
+                assert(len(text) == 3)
+                index1 = int(text[0])
+                index2 = int(text[1])
+                acc = text[2]
+            else:
+                acc = acc+text
+
     id_ctr = 0
-    for i in range(num_lines):  # Hack because last node is broken
+    for i in range(num_lines):
         if(i != 0):
             lpm_index, lpm = max(
                 enumerate(prefix_match_lengths[i][0:i]), key=operator.itemgetter(1))
@@ -525,8 +771,8 @@ def build_constraint_tree(tree_file):
                 node_name = "branch"+f"{int(id_ctr):06d}"
                 id_ctr = id_ctr + 1
             node = TreeNode(node_name, id, depth, parent=subtree_root)
-            print("Inserting %s with parent %s" %
-                  (node_name, subtree_root.name))
+            # print("Inserting %s with parent %s" %
+            #       (node_name, subtree_root.name))
             subtree_root = node
             subtree_root.sub_tests.append(leaf_node_name)
             depth = depth + 1
