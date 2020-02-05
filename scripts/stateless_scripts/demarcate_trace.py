@@ -61,6 +61,10 @@ def main():
             currently_demarcated = 0
             currently_demarcated_fn = ""
 
+            # HACK to remove duplicate writing of certain function calls
+            last_written_fn = ""
+            call_gap = 1
+
             for line in f:
                 meta_lines = []
                 for i in range(17):  # Number of metalines
@@ -82,11 +86,17 @@ def main():
                 time = 0
                 verif = 0
 
-                if(currently_demarcated and opcode != "ret"):
-                    continue
+                if(currently_demarcated):
+                    if("ds_path" in current_fn_name):
+                        output.write(". DS PATH-%s" %
+                                     (current_fn_name[len(current_fn_name)-1:]) + "\n")
 
-                elif(currently_demarcated and str(opcode) == "ret" and current_fn_name == currently_demarcated_fn):
+                    if(opcode != "ret"):
+                        continue
+
+                if(currently_demarcated and str(opcode) == "ret" and current_fn_name == currently_demarcated_fn):
                     currently_demarcated = 0
+                    call_gap = 0
                     currently_demarcated_fn = ""
 
                 elif (currently_demarcated == 0):
@@ -106,13 +116,15 @@ def main():
 
                     if(stateful or dpdk or verif or time):
                         currently_demarcated = 1
-                        if(current_fn_name == " dmap_get_value" or current_fn_name == " vector_return" or current_fn_name == " vector_return"):
+                        if(current_fn_name == " dmap_get_value"):
                             current_fn_name = " klee_forbid_access"  # Jump instead of call
                         elif(current_fn_name == " map_put" or current_fn_name == " map_erase"):
                             current_fn_name = " klee_trace_extra_ptr"  # Jump instead of call
                         elif(current_fn_name == " dchain_is_index_allocated"):
                             current_fn_name = " klee_int"  # Jump instead of call
-                        if(current_fn_name == " flood"):
+                        elif(current_fn_name == " vector_borrow" or current_fn_name == " vector_return"):
+                            current_fn_name = " ds_path_1"  # Jump instead of call
+                        elif(current_fn_name == " flood"):
                             current_fn_name = "flood"  # Will always fail and exit
                         currently_demarcated_fn = current_fn_name
                         meta_lines = [
@@ -121,25 +133,42 @@ def main():
                     for each_line in meta_lines:
                         meta_output.write(each_line)
 
-                    if(stateful):
-                        output.write(
-                            "Call to libVig model - " + fn_name + "\n")
-                        meta_output.write(
-                            "Call to libVig model - " + fn_name + "\n")
-                    elif(dpdk):
-                        output.write("Call to DPDK model - " + fn_name + "\n")
-                        meta_output.write(
-                            "Call to DPDK model - " + fn_name + "\n")
-                    elif(time):
-                        output.write("Call to Time model - " + fn_name + "\n")
-                        meta_output.write(
-                            "Call to Time model - " + fn_name + "\n")
-                    elif(verif):
-                        output.write(
-                            "Call to Verification Code - " + fn_name + "\n")
-                        meta_output.write(
-                            "Call to Verification Code - " + fn_name + "\n")
+                    if(stateful or dpdk or verif or time):
+                        if(call_gap):
+                            last_written_fn = currently_demarcated_fn
+                            if(stateful):
+                                output.write(
+                                    "Call to libVig model - " + fn_name)  # Add the "\n" after adding the path
+                                meta_output.write(
+                                    "Call to libVig model - " + fn_name + "\n")
+                            elif(dpdk):
+                                output.write(
+                                    "Call to DPDK model - " + fn_name + "\n")
+                                meta_output.write(
+                                    "Call to DPDK model - " + fn_name + "\n")
+                            elif(time):
+                                output.write(
+                                    "Call to Time model - " + fn_name + "\n")
+                                meta_output.write(
+                                    "Call to Time model - " + fn_name + "\n")
+                            elif(verif):
+                                output.write(
+                                    "Call to Verification Code - " + fn_name + "\n")
+                                meta_output.write(
+                                    "Call to Verification Code - " + fn_name + "\n")
+
+                    # No two functions can be called back to back
+                        else:
+                            if(not last_written_fn == currently_demarcated_fn):
+                                    # If they're the same, we just ignore.
+                                    # This is a small bug in certain fns, e.g., map_put
+                                print(ip_trace)
+                                print(line)
+                                print("Back to back calls to %s and %s" %
+                                      (last_written_fn, currently_demarcated_fn))
+                                assert(0)
                     else:
+                        call_gap = 1
                         output.write(text)
                         output.write("\n")
 

@@ -27,6 +27,10 @@ echo Generating demarcated instruction traces
 
 parallel "python $py_scripts_dir/demarcate_trace.py {} \$(basename {} .packet_relevant_instructions).packet.demarcated \$(basename {} .packet_relevant_instructions).packet_relevant_tracelog \$(basename {} .packet_relevant_instructions).tracelog.demarcated  $py_scripts_dir/fn_lists/stateful_fns.txt $stub_file  $py_scripts_dir/fn_lists/time_fns.txt $py_scripts_dir/fn_lists/verif_fns.txt" ::: *.packet_relevant_instructions 
 
+echo Cleaning up instruction traces to allow path comparison
+
+parallel "python $py_scripts_dir/cleanup-instr-trace.py {} \$(basename {} .packet.demarcated).packet.comparison.trace" ::: *.packet.demarcated 
+
 echo Generating address traces
 
 parallel "python $py_scripts_dir/print_addresses.py {} \$(basename {} .packet.demarcated).tracelog.demarcated concrete-state-log.txt \$(basename {} .packet.demarcated).packet.unclassified_mem_trace \$(basename {} .packet.demarcated).packet.duplicated" ::: *.packet.demarcated

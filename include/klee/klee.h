@@ -299,6 +299,12 @@ int traced_variable_type(char *variable, char **type);
               "Prefix for Variable not found");                                \
   klee_trace_extra_val##type(var, name, prefix);
 
+#define DS_PATH(num) __attribute__((noinline)) void ds_path_##num()
+DS_PATH(1);
+DS_PATH(2);
+DS_PATH(3);
+#undef DS_PATH
+
 #ifdef __cplusplus
 }
 #endif

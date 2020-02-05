@@ -55,6 +55,9 @@ def main():
     with open(ip_trace) as f, open(ip_metadata) as meta_f:
         with open(op_file, "w") as output:
             for line in f:
+                if(line.startswith(". DS Path")):
+                    print("DS Path inconsistency in %s" % (ip_trace))
+                    assert(0)
                 meta_lines = []
                 for i in range(17):  # Number of metalines
                     meta_lines.append(meta_f.readline())
@@ -63,7 +66,8 @@ def main():
                     if(text.startswith("Call to libVig model")):
                         # Here we do the magic
                         index1 = find_nth(text, "-", 1)
-                        called_fn_name = text[index1+2:]
+                        index2 = find_nth(text, ".", 1)
+                        called_fn_name = text[index1+2:index2]
 
                         if rel_cstate:
                             called_fn_id = sorted(rel_cstate)[0]
