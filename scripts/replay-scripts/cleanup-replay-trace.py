@@ -34,14 +34,13 @@ def main():
                     assert(0 and "Something wrong with how call was made")
                 elif("libVig" in text):
                     assert(len(prev_line) > 0)
-                    output.write(prev_line + "\n")
                     output.write(text + "\n")
 
                 branch = 0
                 prev_line = ""
                 continue
 
-            # The line will be of the form: IP | Call Stack | Function | Instruction | Memory Accesses
+            # The line will be of the form: IP | Function | Instruction | Memory Accesses
             index = find_nth(text, "|", 2)
             disass = text[index+1:].split()
             if(index == -1):
@@ -50,8 +49,28 @@ def main():
                 opcode = disass[0].strip()
 
             if(branch):
-                output.write(prev_line + "\n")
-                output.write(text + "\n")
+                prev_index1 = find_nth(prev_line, "|", 1)
+                prev_index2 = find_nth(prev_line, "|", 2)
+                prev_index3 = find_nth(prev_line, "|", 3)
+                fn_name = prev_line[prev_index1+1: prev_index2].strip()
+                insn = prev_line[prev_index2+1: prev_index3].strip()
+                branch_target = insn.split()[-1]
+                assert(branch_target == "ret" or branch_target.startswith("0x"))
+                if(branch_target == "ret"):
+                    result = "Taken"
+                else:
+                    # Remove the "0x"
+                    branch_target = branch_target[2:].upper()
+                    index1 = find_nth(text, "|", 1)
+                    ip = text[0:index1].strip()
+                    if(ip == branch_target):
+                        result = "Taken"
+                    else:
+                        result = "Not Taken"
+
+                output.write(fn_name + " | " + insn.split()
+                             [0] + " | " + result + "\n")
+
                 branch = 0
                 prev_line = ""
 
