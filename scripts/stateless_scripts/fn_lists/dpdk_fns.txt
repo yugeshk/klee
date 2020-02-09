@@ -43,3 +43,4 @@ rte_get_master_lcore
 rte_strerror
 rte_pktmbuf_clone
 cmdline_isendoftoken
+nf_set_ipv4_checksum

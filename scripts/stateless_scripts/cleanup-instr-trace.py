@@ -37,10 +37,6 @@ def main():
                     output.write(prev_line + "\n")
                     output.write(text + "\n")
 
-                else:
-                    # No call to time/dpdk models from inside NF core process.
-                    assert("Verification" in text)
-
                 branch = 0
                 prev_line = ""
                 continue
@@ -48,23 +44,20 @@ def main():
             # The line will be of the form: IP | Call Stack | Function | Instruction | Memory Accesses
             index = find_nth(text, "|", 3)
             disass = text[index+1:].split()
-            if(len(disass) == 0):
+            if(index == -1):
                 assert (0 and "Something wrong with opcode")
             else:
                 opcode = disass[0].strip()
 
-            if(opcode in jumps or opcode in jumps_uncond or opcode in calls or opcode in rets):
-                prev_line = text
-                branch = 1
-
-            elif(branch):
+            if(branch):
                 output.write(prev_line + "\n")
                 output.write(text + "\n")
                 branch = 0
                 prev_line = ""
 
-        if(len(prev_line) > 0):  # Print last ret
-            output.write(prev_line + "\n")
+            if(opcode in jumps or opcode in jumps_uncond or opcode in calls or opcode in rets):
+                prev_line = text
+                branch = 1
 
 
 def find_nth(haystack, needle, n):
