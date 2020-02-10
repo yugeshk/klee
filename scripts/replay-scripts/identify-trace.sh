@@ -15,17 +15,17 @@ PCAP=$2
 
 pushd $BOLT_DIR/nf/testbed/hard >> /dev/null
 
-  # bash bench.sh $NF replay-pcap-instr "null" $PCAP
+  bash bench.sh $NF replay-pcap-instr "null" $PCAP
   pushd $NF >> /dev/null
     python $REPLAY_SCRIPTS_DIR/get-last-packet.py pincounts.log replay-trace
     python $REPLAY_SCRIPTS_DIR/demarcate-replay-trace.py replay-trace replay-demarcated $FN_LIST_DIR/stateful_fns.txt $FN_LIST_DIR/dpdk_fns.txt $FN_LIST_DIR/time_fns.txt
     python $REPLAY_SCRIPTS_DIR/cleanup-replay-trace.py replay-demarcated replay-branches
 
     bash ../test-bolt.sh $(basename $NF)
-    # python $REPLAY_SCRIPTS_DIR/match-branches.py
+    pushd klee-last >> /dev/null
+      python $REPLAY_SCRIPTS_DIR/match-branches.py ../replay-branches .
+    popd >> /dev/null
   
   popd >> /dev/null
-   
 
 popd >> /dev/null
-
