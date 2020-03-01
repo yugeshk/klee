@@ -223,7 +223,7 @@ def main():
 
     # Now, let's remove spurious, perf-unrelated branching.
     # This is an iterative process which will repeat until we hit a fixed point
-    # Currently only works for the full-tree and not the call tree (we don't care about it anyway)
+    # Does not work for the call tree (we don't care about it anyway)
     merged_nodes = list()
     if(tree_type == "full-tree" or tree_type == "constraint-tree"):
         changed = 1
@@ -335,42 +335,39 @@ def main():
                         curr_constraints = node.constraints
                         merged_in_constraints = dad.constraints
                         dad_ind = children.index(dad)
-                        neice_ind = list(children[dad_ind].children).index(neice)
+                        neice_ind = list(
+                            children[dad_ind].children).index(neice)
                         print(node.name)
 
-                        #Fix the branching
+                        # Fix the branching
                         dad.parent = None
                         nephew.parent = None
                         neice.parent = node
                         merged_tuples.clear()
                         new_neice_ind = list(node.children).index(neice)
 
-
                         if(curr_constraints.lbranch == merged_in_constraints.lbranch and
-                           (neice_ind + merged_in_constraints.sind)%2 == (dad_ind + curr_constraints.sind)%2):
+                           (neice_ind + merged_in_constraints.sind) % 2 == (dad_ind + curr_constraints.sind) % 2):
                             # This implies that we simply have to and/or the subject and we're good. Since neice is at the end of a double branch (both true or both false)
                             if(merged_in_constraints.lbranch == "(Eq false"):
-                                if(neice_ind != merged_in_constraints.sind): # Neice was both false
+                                if(neice_ind != merged_in_constraints.sind):  # Neice was both false
                                     conjunction = "OR"
-                                    sind = (new_neice_ind + 1) %2 
+                                    sind = (new_neice_ind + 1) % 2
                                 else:
                                     conjunction = "AND"  # Neice was both true
                                     sind = new_neice_ind
-                                subject = curr_constraints.subject + "\n" + conjunction + "\n" + merged_in_constraints.subject
+                                subject = curr_constraints.subject + "\n" + \
+                                    conjunction + "\n" + merged_in_constraints.subject
                                 sbranch = curr_constraints.sbranch
                                 lbranch = curr_constraints.lbranch
-                                node.constraints = Constraint(subject, sbranch, lbranch, sind)
+                                node.constraints = Constraint(
+                                    subject, sbranch, lbranch, sind)
 
-                            
                             else:
                                 assert(0 and "Constraint merging not supported")
 
                         else:
                             assert(0 and "Constraint merging not supported")
-
-                        
-
-
 
     # Get perf variability, including formula variability for each tag
     for tag in all_tag_prefixes:
@@ -443,7 +440,7 @@ def main():
 def pretty_print_constraints(node):
     assert(len(node.constraints.subject) > 0)
 
-    print("Constraints for node %s" %(node.name))
+    print("Constraints for node %s" % (node.name))
     print("Subject is %s" % (node.constraints.subject))
     print("branch to node %s is %s" %
           (node.children[node.constraints.sind].name, node.constraints.sbranch))
@@ -771,8 +768,6 @@ def build_constraint_tree(tree_file):
                 node_name = "branch"+f"{int(id_ctr):06d}"
                 id_ctr = id_ctr + 1
             node = TreeNode(node_name, id, depth, parent=subtree_root)
-            # print("Inserting %s with parent %s" %
-            #       (node_name, subtree_root.name))
             subtree_root = node
             subtree_root.sub_tests.append(leaf_node_name)
             depth = depth + 1
