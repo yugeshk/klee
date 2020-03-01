@@ -33,3 +33,7 @@ autom4te.cache/
 
 # Vscode
 .vscode/
+
+*.bc
+klee-out-*
+klee-last
