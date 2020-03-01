@@ -685,20 +685,16 @@ def get_node_constraints(node):
         short_constraint = constraints[0]
         long_constraint = constraints[1]
         short_ind = 0
-    long_constraint = long_constraint.replace('\n', '')
-    short_constraint = short_constraint.replace('\n', '')
-    assert(long_constraint.find(short_constraint) != -1)
 
     short_constraint = short_constraint.rstrip()
-    subject = short_constraint[short_constraint.find("\n")+1:]
-    subject = subject.replace("\n", "")
-    branch1 = short_constraint[0:short_constraint.find("\n")+1].rstrip()
-    if(branch1 == ""):
-        branch1 = "(Eq true"
-    short_constraint = short_constraint.replace("\n", "")
-    long_constraint = long_constraint.replace("\n", "")
-    branch2 = long_constraint[0:long_constraint.find(subject)]
-    branch2 = branch2.replace("\n", " ")
+    long_constraint = long_constraint.replace('\n', '')
+    short_constraint = short_constraint.replace('\n', '')
+    assert(long_constraint[0:long_constraint.find(
+        short_constraint)] == "(Eq false")
+
+    subject = short_constraint
+    branch1 = "(Eq true"
+    branch2 = "(Eq false"
     return Constraint(subject, branch1, branch2, short_ind)
 
 
