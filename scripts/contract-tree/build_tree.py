@@ -228,14 +228,6 @@ def main():
             node.max_perf, node.min_perf = get_perf_variability(node)
             assign_tags(node)
 
-    # Now, let's coalesce nodes perf variability less than input resolution!
-    for node in list(PostOrderIter(tree_root)):
-        if(not node.is_leaf and perf_within_resolution(node.max_perf, node.min_perf)):
-            # TODO: Need to coalesce formula
-            for child in list(node.children):
-                child.parent = None
-            node.constraints = Constraint()  # Because it is now a leaf
-
     # Now, let's remove spurious, perf-unrelated branching.
     # This is used to eliminate the following redundancy:
     # Assume a resolution of 10, we want to coalesce Node2, Node3, but not either of them individually
@@ -258,7 +250,7 @@ def main():
                     # Only dealing with binary trees
                     assert(len(children) == 2)
                     merged_tuples.clear()
-                    if(compare_trees(children[0], children[1])):
+                    if((not (children[0].is_leaf and children[1].is_leaf)) and (compare_trees(children[0], children[1]))):
                         assert(compare_node_constraints(
                             children[0], children[1]) and "Merging children with different constraints")
                         merged_nodes.append(node)
@@ -314,7 +306,6 @@ def main():
                 dad = None
                 nephew = None
                 neice = None
-                print(node.name)
 
                 # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
 
@@ -392,18 +383,27 @@ def main():
 
                         else:
                             assert(0 and "Constraint merging not supported")
+
+    # Now, let's coalesce nodes perf variability less than input resolution!
+    for node in list(PostOrderIter(tree_root)):
+        if(not node.is_leaf and perf_within_resolution(node.max_perf, node.min_perf)):
+            # TODO: Need to coalesce formula
+            for child in list(node.children):
+                child.parent = None
+            node.constraints = Constraint()  # Because it is now a leaf
+
     for node in PostOrderIter(tree_root):
         if(not node.is_leaf):
             if(node.constraints.subject in constraint_thresholds):
-                if(constraint_thresholds[node.constraints.subject] > (node.max_perf - node.min_perf)):
+                if(constraint_thresholds[node.constraints.subject] < (node.max_perf - node.min_perf)):
                     constraint_thresholds[node.constraints.subject] = (
                         node.max_perf - node.min_perf)
             else:
                 constraint_thresholds[node.constraints.subject] = (
                     node.max_perf - node.min_perf)
 
-    # Printing constraints (PCVs) that matter
-    # pretty_print_relevant_constraints()
+    # Printing constraints(PCVs) that matter
+    pretty_print_relevant_constraints()
 
     # Get perf variability, including formula variability for each tag
     for tag in all_tag_prefixes:
@@ -476,7 +476,7 @@ def perf_within_resolution(perf1, perf2):
 
 
 def pretty_print_relevant_constraints():
-    print("Relevant constraints for resolution %d" % (perf_resolution))
+    print("Relevant constraints for resolution %d:" % (perf_resolution))
     for constraint, res in constraint_thresholds.items():
         if(res >= perf_resolution):
             print(constraint)
