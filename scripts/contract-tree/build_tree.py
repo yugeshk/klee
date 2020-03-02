@@ -393,7 +393,7 @@ def main():
             node.constraints = Constraint()  # Because it is now a leaf
 
     for node in PostOrderIter(tree_root):
-        if(not node.is_leaf):
+        if(not node.is_leaf and node.constraints.subject != None):
             if(node.constraints.subject in constraint_thresholds):
                 if(constraint_thresholds[node.constraints.subject] < (node.max_perf - node.min_perf)):
                     constraint_thresholds[node.constraints.subject] = (
