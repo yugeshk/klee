@@ -13,7 +13,7 @@ if [ "$TREE_TYPE" != "call-tree" ] && [ "$TREE_TYPE" != "full-tree" ] && [ "$TRE
   exit
 fi
 
-pushd $TRACES_DIR
+pushd $TRACES_DIR >> /dev/null
 
 grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{print $1 "," $2}' | sed 's/\.call_path//g' > tc_tags
 CONSTRAINT_FILE=""
@@ -35,6 +35,6 @@ do
   python $KLEE_DIR/scripts/contract-tree/build_tree.py tc_tags combined_perf.txt perf-formula.txt "$METRIC" $TREE_FILE $TREE_TYPE $CONSTRAINT_FILE $RESOLUTION perf_var_$METRIC_NAME formula_var_$METRIC_NAME $CONSTRAINT
 done
 
-popd
+popd >> /dev/null
 
 dot $TRACES_DIR/tree.dot -T png -o tree.png

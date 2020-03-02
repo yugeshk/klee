@@ -30,10 +30,10 @@ constraint_node = sys.argv[11]
 class Constraint:
 
     def __init__(self, subject=None, sbranch=None, lbranch=None, sind=None):
-        self._subject = subject
-        self._sbranch = sbranch
-        self._lbranch = lbranch
-        self._sind = sind
+        self._subject = subject  # Main clause of constraint
+        self._sbranch = sbranch  # True branch
+        self._lbranch = lbranch  # False branch
+        self._sind = sind  # Used to indicate if first or second child follows true branch
 
     @property
     def subject(self):
@@ -75,7 +75,8 @@ class MyNode(Constraint):
         self._id = id
         self._depth = depth
         self._tags = []
-        self._perf = -1
+        self._max_perf = -1
+        self._min_perf = -1
         self._formula = ""
         self._sub_tests = []
         self._constraints = Constraint()
@@ -113,12 +114,20 @@ class MyNode(Constraint):
         self._tags = value
 
     @property
-    def perf(self):
-        return self._perf
+    def max_perf(self):
+        return self._max_perf
 
-    @perf.setter
-    def perf(self, value):
-        self._perf = value
+    @max_perf.setter
+    def max_perf(self, value):
+        self._max_perf = value
+
+    @property
+    def min_perf(self):
+        return self._min_perf
+
+    @min_perf.setter
+    def min_perf(self, value):
+        self._min_perf = value
 
     @property
     def formula(self):
@@ -175,6 +184,7 @@ def main():
     get_traces_perf()
     get_traces_tags()
     get_traces_perf_formula()
+    assert(len(traces_perf) == len(traces_perf_formula))
 
     build_tree(tree_file, tree_type)
 
@@ -200,28 +210,31 @@ def main():
     # Let's assign tags and performance resolution now
     for node in list(PostOrderIter(tree_root)):
         if(node.is_leaf):
-            node.perf = traces_perf[node.name]
+            node.max_perf = traces_perf[node.name]
+            node.min_perf = node.max_perf
             node.formula = traces_perf_formula[node.name]
             if(node.name in traces_tags):
                 node.tags = traces_tags[node.name]
 
         else:
-            node.perf = get_perf_variability(node)
+            node.max_perf, node.min_perf = get_perf_variability(node)
             assign_tags(node)
 
     # Now, let's coalesce nodes perf variability less than input resolution!
     for node in list(PostOrderIter(tree_root)):
-        if(not node.is_leaf and node.perf < perf_resolution):
-            children = list(node.children)
-            children_perf = list(child.perf for child in children)
-            node.perf = int((max(children_perf) + min(children_perf))/2)
-            # TODO:HACK HACK HACK. Needs actual coalescing
-            node.formula = children[0].formula
-            for child in children:
+        if(not node.is_leaf and perf_within_resolution(node.max_perf, node.min_perf)):
+            # TODO: Need to coalesce formula
+            for child in list(node.children):
                 child.parent = None
-            node.constraints = Constraint()
+            node.constraints = Constraint()  # Because it is now a leaf
 
     # Now, let's remove spurious, perf-unrelated branching.
+    # This is used to eliminate the following redundancy:
+    # Assume a resolution of 10, we want to coalesce Node2, Node3, but not either of them individually
+    #               Node1
+    #   Node2 --------|---------Node3
+    # 5--|--200                6--|--201
+    #
     # This is an iterative process which will repeat until we hit a fixed point
     # Does not work for the call tree (we don't care about it anyway)
     merged_nodes = list()
@@ -241,7 +254,6 @@ def main():
                         assert(compare_node_constraints(
                             children[0], children[1]) and "Merging children with different constraints")
                         merged_nodes.append(node)
-                        # print(merged_tuples)
                         for pair in merged_tuples:
                             # Sanity check that the tuple always has a node from child zero and then child one.
                             # Mostly redundant, but left here in any case
@@ -252,9 +264,10 @@ def main():
                             merged_in = findall_by_attr(
                                 children[1], pair[1], name='name')[0]
                             final.sub_tests.append(merged_in.sub_tests)
-                            if(final.is_leaf):
-                                final.perf = int(
-                                    (final.perf + merged_in.perf)/2)
+                            final.max_perf = max(
+                                final.max_perf, merged_in.max_perf)
+                            final.min_perf = min(
+                                final.min_perf, merged_in.min_perf)
                         children[1].parent = None
                         changed = 1
 
@@ -294,6 +307,8 @@ def main():
                 nephew = None
                 neice = None
 
+                # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
+
                 if(compare_node_constraints(children[0], grandchildren_2[0])):
                     uncle = children[0]
                     dad = children[1]
@@ -327,9 +342,10 @@ def main():
                             merged_in = findall_by_attr(
                                 nephew, pair[1], name='name')[0]
                             final.sub_tests.append(merged_in.sub_tests)
-                            if(final.is_leaf):
-                                final.perf = int(
-                                    (final.perf + merged_in.perf)/2)
+                            final.max_perf = max(
+                                final.max_perf, merged_in.max_perf)
+                            final.min_perf = min(
+                                final.min_perf, merged_in.min_perf)
 
                         # Modify the constraints in the current node
                         curr_constraints = node.constraints
@@ -337,7 +353,6 @@ def main():
                         dad_ind = children.index(dad)
                         neice_ind = list(
                             children[dad_ind].children).index(neice)
-                        print(node.name)
 
                         # Fix the branching
                         dad.parent = None
@@ -437,6 +452,10 @@ def main():
         pretty_print_constraints(node)
 
 
+def perf_within_resolution(perf1, perf2):
+    return (abs(perf1-perf2) < perf_resolution)
+
+
 def pretty_print_constraints(node):
     assert(len(node.constraints.subject) > 0)
 
@@ -449,18 +468,16 @@ def pretty_print_constraints(node):
 
 
 def compare_node_constraints(node1, node2):
-    return (node1.constraints.subject == node2.constraints.subject and
-            node1.constraints.sbranch == node2.constraints.sbranch and node1.constraints.lbranch == node2.constraints.lbranch)
+    return (node1.constraints.subject == node2.constraints.subject)
 
 
 def compare_trees(node1, node2):
-    # print("Call to compare trees with %s, %s" % (node1.name, node2.name))
-    # print(merged_tuples)
+    # Checks if the sub-trees below node1 and node2 are identical given a resolution
     if(len(node1.children) != len(node2.children)):
         check = 0
     elif(node1.is_leaf):
         # Node2 is also a leaf node because of above check
-        if(abs(node1.perf-node2.perf) < perf_resolution):
+        if(perf_within_resolution(max(node1.max_perf, node2.max_perf), min(node1.min_perf, node2.min_perf))):
             check = 1
         else:
             check = 0
@@ -484,12 +501,13 @@ def compare_trees(node1, node2):
     if(check == 1):
         merged_tuples.append((node1.name, node2.name))
         return 1
-    elif(check == 2):  # Only need to clear here, when both matching possibilities are deemed impossible
+    elif(check == 2):  # Only need to clear the recursion here, when both matching possibilities are deemed impossible
         merged_tuples.clear()
     return 0
 
 
 def check_for_clarity(formula_var):
+    # Checks if a set of formulae only differ in terms of the constant
     if(len(formula_var) == 0):
         return False
 
@@ -519,11 +537,11 @@ def assign_tags(node):
 
 def get_perf_variability(node):
     # Returns perf variability for an intermediate node in the tree.
-    leaves = list(findall_by_attr(node, 1, name='is_leaf'))
-    leaves_perf = list(leaf.perf for leaf in leaves)
-    if (len(leaves_perf)):
-        return max(leaves_perf) - min(leaves_perf)
-    return 0
+    children = list(node.children)
+    assert(len(children) <= 2 and len(children) > 0)
+    max_perf = max(list(node.max_perf for node in children))
+    min_perf = min(list(node.min_perf for node in children))
+    return max_perf, min_perf
 
 
 def node_colour_fn(node):
@@ -541,12 +559,12 @@ def node_identifier_fn(node):
         # tests = tests.replace(", ", "\n")
         # identifier += '%s' % (tests)
 
-        identifier += '\nPerf = %s' % (node.perf)
+        identifier += '\nPerf = %s' % ((node.max_perf + node.min_perf)/2)
         identifier += '\nFormula = %s' % (node.formula)
 
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
-            node.name, node.id, node.depth, node.perf)
+            node.name, node.id, node.depth, (node.max_perf - node.min_perf))
 
     tag = str(node.tags)[1:-1]  # Removes the square brackets around the list
     tag = tag.replace(", ", "\n")
@@ -571,7 +589,6 @@ def build_call_tree(tree_file):
             sequence = text.split(',')
             leaf_node_name = "test"+f"{int(sequence[len(sequence)-1]):06d}"
             if(leaf_node_name in traces_perf):
-                # print("inserting node %s" % (leaf_node_name))
                 subtree_root = tree_root
                 depth = 0
                 for node_id in sequence:
@@ -606,7 +623,7 @@ def build_full_tree(tree_file):
             text = text[index+1:]
             leaf_node_name = "test"+f"{int(leaf_id):06d}"
             if(leaf_node_name in traces_perf):
-                print("inserting node %s" % (leaf_node_name))
+                # print("inserting node %s" % (leaf_node_name))
                 sequence = text.split(',')
                 subtree_root = tree_root
                 depth = 0
@@ -753,7 +770,7 @@ def build_constraint_tree(tree_file):
         subtree_root = find_lpm_node(subtree_root, lpm_index, lpm, i)
         rem_len = prefix_match_lengths[i][i] - lpm
         leaf_node_name = "test"+f"{i:06d}"
-        print("inserting node %s" % (leaf_node_name))
+        # print("inserting node %s" % (leaf_node_name))
         depth = lpm
         while(rem_len >= 0):
             id = len(subtree_root.children)
