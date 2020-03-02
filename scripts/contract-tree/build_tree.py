@@ -12,6 +12,10 @@ from anytree import NodeMixin, RenderTree, PostOrderIter
 from anytree.search import find, findall_by_attr
 from anytree.exporter import DotExporter
 
+# For reasoning about formulae
+from sympy import *
+from sympy.parsing.sympy_parser import parse_expr
+
 sys.setrecursionlimit(1000000)
 
 tags_file = sys.argv[1]
@@ -172,20 +176,24 @@ perf_formula_var = {}
 merged_tuples = list()
 prefix_match_lengths = [[]]
 prefix_branch_constraints = [[[]]]
+constraint_thresholds = {}
 
 tree_root = TreeNode("ROOT", -1, -1)
+
+# Setup for formula interpretation
+e, c, t = symbols("e c t")  # Loop PCVs
+common_vals = [(e, 0), (t, 1), (c, 0)]
+extreme_vals = [(e, 65536), (t, 65536), (c, 65535)]
 
 
 def main():
     global tree_root
+    global constraint_thresholds
 
     assert(tree_type == "full-tree" or tree_type ==
            "call-tree" or tree_type == "constraint-tree")
     get_traces_perf()
     get_traces_tags()
-    get_traces_perf_formula()
-    assert(len(traces_perf) == len(traces_perf_formula))
-
     build_tree(tree_file, tree_type)
 
     # Finished constructing tree, now coalesce spurious nodes.
@@ -306,6 +314,7 @@ def main():
                 dad = None
                 nephew = None
                 neice = None
+                print(node.name)
 
                 # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
 
@@ -383,6 +392,18 @@ def main():
 
                         else:
                             assert(0 and "Constraint merging not supported")
+    for node in PostOrderIter(tree_root):
+        if(not node.is_leaf):
+            if(node.constraints.subject in constraint_thresholds):
+                if(constraint_thresholds[node.constraints.subject] > (node.max_perf - node.min_perf)):
+                    constraint_thresholds[node.constraints.subject] = (
+                        node.max_perf - node.min_perf)
+            else:
+                constraint_thresholds[node.constraints.subject] = (
+                    node.max_perf - node.min_perf)
+
+    # Printing constraints (PCVs) that matter
+    # pretty_print_relevant_constraints()
 
     # Get perf variability, including formula variability for each tag
     for tag in all_tag_prefixes:
@@ -393,10 +414,8 @@ def main():
         if trace in traces_tags:
             for x in range(1, len(traces_tags[trace])+1):
                 perf_var[tuple(traces_tags[trace][0:x])].add(perf)
-            if(trace in traces_perf_formula):
-                for x in range(1, len(traces_tags[trace])+1):
-                    perf_formula_var[tuple(traces_tags[trace][0:x])].add(
-                        traces_perf_formula[trace])
+                perf_formula_var[tuple(traces_tags[trace][0:x])].add(
+                    traces_perf_formula[trace])
 
     with open(op_var_file, "w") as op:
         op.write("#Packet Class #Perf-Variability\n")
@@ -454,6 +473,13 @@ def main():
 
 def perf_within_resolution(perf1, perf2):
     return (abs(perf1-perf2) < perf_resolution)
+
+
+def pretty_print_relevant_constraints():
+    print("Relevant constraints for resolution %d" % (perf_resolution))
+    for constraint, res in constraint_thresholds.items():
+        if(res >= perf_resolution):
+            print(constraint)
 
 
 def pretty_print_constraints(node):
@@ -808,17 +834,31 @@ def build_tree(tree_file, tree_type):
 
 def get_traces_perf():
     global traces_perf
-    with open(perf_file, 'r') as f:
+    global traces_perf_formula
+
+    # We assume that these values are
+    with open(formula_file, 'r') as f:
         for line in f:
             text = line.rstrip()
             test_id = text[0:
                            find_nth(text, ",", 1)]
             metric = text[(find_nth(text, ",", 1)+1):
                           find_nth(text, ",", 2)]
-            perf = text[(find_nth(text, ",", 2)+1):]
+            perf = str(text[(find_nth(text, ",", 2)+1):])
 
             if (metric == perf_metric):
-                traces_perf[test_id] = int(perf)
+                traces_perf_formula[test_id] = perf
+                expr = parse_expr(perf)
+                traces_perf[test_id] = expr.subs(common_vals)
+
+    # Done separately, because not sure if lines match (They most probably do)
+
+    with open(perf_file, 'r') as f:
+        for line in f:
+            text = line.rstrip()
+            test_id = text[0:
+                           find_nth(text, ",", 1)]
+            assert(test_id in traces_perf_formula and "Missing perf formula")
 
 
 def get_traces_tags():
@@ -860,21 +900,6 @@ def get_traces_tags():
                             all_tag_prefixes.append(traces_tags[test_id][0:x])
     all_tag_prefixes = list(all_tag_prefixes)
     all_tag_prefixes.sort(key=lambda x: len(x))
-
-
-def get_traces_perf_formula():
-    global traces_perf_formula
-    with open(formula_file, 'r') as f:
-        for line in f:
-            text = line.rstrip()
-            test_id = text[0:
-                           find_nth(text, ",", 1)]
-            metric = text[(find_nth(text, ",", 1)+1):
-                          find_nth(text, ",", 2)]
-            perf = str(text[(find_nth(text, ",", 2)+1):])
-
-            if (metric == perf_metric):
-                traces_perf_formula[test_id] = perf
 
 
 def find_nth(haystack, needle, n):
