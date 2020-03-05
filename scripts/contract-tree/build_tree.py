@@ -225,7 +225,7 @@ def main():
         if(node.is_leaf):
             perf = parse_expr(
                 traces_perf_formula[node.name]).subs(extreme_vals)
-            if(not perf_within_resolution(perf)):
+            if(not perf_within_resolution(perf) and ("*" in traces_perf_formula[node.name])):
                 loop_pcv_violations.add(
                     traces_perf_formula[node.name])
     loop_pcv_violations = merge_formulae(loop_pcv_violations)
@@ -278,7 +278,8 @@ def main():
                     branch_pcv_violations[f] = temp
 
     for formula, node_list in branch_pcv_violations.items():
-        print(formula)
+
+        print("\n*** Violating Formula(e) *** \n %s" % (formula))
         trees_for_formula = {}
         for depth, nodes in node_list.items():
             paths = []
@@ -290,13 +291,16 @@ def main():
             trees_for_formula[depth] = depth_root
             print_tree(depth_root)
 
+    # Printing loop PCV violations
+    print("\n*** Violating Formula(e) *** \n")
+    for formula in loop_pcv_violations:
+        print(formula)
+    print("Cause(s) of violation\n%s" % (loop_pcv_root_cause))
+
     if(constraint_node != "none"):
         node = find(
             tree_root, lambda node: node.name == constraint_node)
         pretty_print_constraints(node)
-
-    print(loop_pcv_violations)
-    print(branch_pcv_violations)
 
     DotExporter(tree_root,
                 nodenamefunc=node_identifier_fn,
@@ -374,7 +378,7 @@ def print_tree(root):
         ctr = ctr + 1
         s = ""
         leaf_path = get_node_path(leaf.name, root)
-        s = "Condition:" + "\n"
+        s = "Cause(s) of violation:" + "\n"
         for c in leaf_path:
             if(c.sind):
                 prefix = "(Eq true "
