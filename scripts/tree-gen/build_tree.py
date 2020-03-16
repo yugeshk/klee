@@ -22,11 +22,12 @@ tags_file = sys.argv[1]
 perf_file = sys.argv[2]
 formula_file = sys.argv[3]
 perf_metric = sys.argv[4]
-tree_file = sys.argv[5]
-constraint_file = sys.argv[6]
-expected_perf = int(sys.argv[7])
-perf_resolution = int(sys.argv[8])
-constraint_node = sys.argv[9]
+tree_type = sys.argv[5]
+tree_file = sys.argv[6]
+constraint_file = sys.argv[7]
+expected_perf = int(sys.argv[8])
+perf_resolution = int(sys.argv[9])
+constraint_node = sys.argv[10]
 
 
 class Constraint:
@@ -189,7 +190,6 @@ def main():
 
     # Remove nodes with no siblings.
     for node in list(PostOrderIter(tree_root))[:]:
-
         while(len(node.siblings) == 0):
             # We do not want to coalesce the root or the first node
             if(node.parent == tree_root or node.is_root):
@@ -207,35 +207,26 @@ def main():
             node.children[node.constraints.sind].is_true = 1
             node.children[(node.constraints.sind+1) % 2].is_true = 0
 
-    # Let's assign tags and performance resolution now
-    for node in list(PostOrderIter(tree_root)):
-        if(node.is_leaf):
-            node.max_perf = traces_perf[node.name]
-            node.min_perf = node.max_perf
-            node.formula.add(traces_perf_formula[node.name])
-            if(node.name in traces_tags):
-                node.tags = traces_tags[node.name]
+    # Let's assign tags and performance now
+    tree_root = assign_tags_and_perf(tree_root)
 
-        else:
-            node.max_perf, node.min_perf = get_perf_variability(node)
-            assign_tags(node)
-
-    # Finding violations due to loop PCVs:
-    for node in list(PostOrderIter(tree_root)):
-        if(node.is_leaf):
-            perf = parse_expr(
-                traces_perf_formula[node.name]).subs(extreme_vals)
-            if(not perf_within_resolution(perf) and ("*" in traces_perf_formula[node.name])):
-                loop_pcv_violations.add(
-                    traces_perf_formula[node.name])
-    loop_pcv_violations = merge_formulae(loop_pcv_violations)
-
-    # Finding violations due to branch PCVs
     deleted_nodes = list()
-    for node in list(LevelOrderIter(tree_root))[:]:
-        if((not node.is_leaf and perf_within_resolution(node.max_perf) and perf_within_resolution(node.min_perf)) or (node.is_leaf and perf_within_resolution(node.max_perf))):
-            node.parent = None
-            deleted_nodes.append(node.name)
+    if(tree_type == "neg-tree"):
+        # Finding violations due to loop PCVs:
+        for node in list(PostOrderIter(tree_root)):
+            if(node.is_leaf):
+                perf = parse_expr(
+                    traces_perf_formula[node.name]).subs(extreme_vals)
+                if(not perf_within_envelope(perf) and ("*" in traces_perf_formula[node.name])):
+                    loop_pcv_violations.add(
+                        traces_perf_formula[node.name])
+        loop_pcv_violations = merge_formulae(loop_pcv_violations)
+
+        # Finding violations due to branch PCVs
+        for node in list(LevelOrderIter(tree_root))[:]:
+            if((not node.is_leaf and perf_within_envelope(node.max_perf) and perf_within_envelope(node.min_perf)) or (node.is_leaf and perf_within_envelope(node.max_perf))):
+                node.parent = None
+                deleted_nodes.append(node.name)
 
     # All nodes left are now perf violations, so let's assign formulae to intermediate nodes
     for node in list(LevelOrderIter(tree_root)):
@@ -244,19 +235,52 @@ def main():
                 if(sub_node in traces_perf_formula and sub_node not in deleted_nodes):
                     node.formula.add(traces_perf_formula[sub_node])
 
-    # Now we remove subtrees entirely
-    for node in list(LevelOrderIter(tree_root))[:]:
-        if((not node.is_leaf) and (not bool(set(node.sub_tests) & set(deleted_nodes)))):
-            node.constraints = Constraint()
-            for child in list(node.children):
-                child.parent = None
+    if(tree_type == "neg-tree"):
+        # Now we remove subtrees entirely
+        for node in list(LevelOrderIter(tree_root))[:]:
+            if((not node.is_leaf) and (not bool(set(node.sub_tests) & set(deleted_nodes)))):
+                node.constraints = Constraint()
+                for child in list(node.children):
+                    child.parent = None
 
     # Now we want to remove spurious, violation-unrelated branching
     tree_root = remove_spurious_branching(tree_root)
 
-    # Final step - constraint coalescing
+    # Next step - constraint coalescing
     tree_root = coalesce_constraints(tree_root)
 
+    # Coalescing leaves for the res-tree
+    if(tree_type == "res-tree"):
+        # Now, let's coalesce nodes perf variability less than input resolution!
+        for node in list(PostOrderIter(tree_root)):
+            if(not node.is_leaf and can_merge_perf(node.max_perf, node.min_perf)):
+                # TODO: Need to coalesce formula
+                for child in list(node.children):
+                    child.parent = None
+                node.constraints = Constraint()  # Because it is now a leaf
+
+    pretty_print_tree(tree_root)
+
+    if(constraint_node != "none"):
+        node = find(
+            tree_root, lambda node: node.name == constraint_node)
+        pretty_print_constraints(node)
+
+    DotExporter(tree_root,
+                nodenamefunc=node_identifier_fn,
+                nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+
+
+def pretty_print_tree(root):
+    if(tree_type == "neg-tree"):
+        pretty_print_neg_tree(root)
+    else:
+        pretty_print_res_tree(root)
+
+
+def pretty_print_neg_tree(root):
+    global branch_pcv_violations
+    global loop_pcv_violations
     # Now we put together branch PCV violations in a user-friendly format
     for node in PostOrderIter(tree_root):
         if(node.is_leaf):
@@ -284,30 +308,43 @@ def main():
         for depth, nodes in node_list.items():
             paths = []
             for node in nodes:
-                node_path = get_node_path(node, tree_root)
-                paths.append(node_path)
+                node_path = get_node_path(node, root)
+                paths.append((node, node_path))
 
             depth_root = build_path_tree(paths)
             trees_for_formula[depth] = depth_root
             print_tree(depth_root)
 
     # Printing loop PCV violations
-    print("\n*** Violating Formula(e) *** \n")
-    for formula in loop_pcv_violations:
-        print(formula)
-    print("Cause(s) of violation\n%s" % (loop_pcv_root_cause))
-
-    if(constraint_node != "none"):
-        node = find(
-            tree_root, lambda node: node.name == constraint_node)
-        pretty_print_constraints(node)
-
-    DotExporter(tree_root,
-                nodenamefunc=node_identifier_fn,
-                nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+    if(len(loop_pcv_violations)):
+        print("\n*** Violating Formula(e) *** \n")
+        for formula in loop_pcv_violations:
+            print(formula)
+        print("Cause(s) of violation\n%s" % (loop_pcv_root_cause))
 
 
-def build_path_tree(paths):
+def pretty_print_res_tree(root):
+    #TODO: This can be done even better. What if you minimize this by bucket, just like you did for the formula in the neg_tree
+    nodes_by_depth = {}
+    # Now we put together branch PCV violations in a user-friendly format
+    for node in PostOrderIter(tree_root):
+        if(node.is_leaf):
+            node.depth = get_node_depth(node)  # Reusing depth
+            if(node.depth in nodes_by_depth):
+                nodes_by_depth[node.depth].add(node.name)
+            else:
+                nodes_by_depth[node.depth] = {node.name}
+
+    for depth, nodes in nodes_by_depth.items():
+        paths = []
+        for node in nodes:
+            node_path = get_node_path(node, root)
+            paths.append((node, node_path))
+        depth_root = build_path_tree(paths)
+        print_tree(depth_root)
+
+
+def build_path_tree(paths_list):
 
     # Setup
     root_node = TreeNode("depth_root", -1, -1)
@@ -319,7 +356,8 @@ def build_path_tree(paths):
     temp.is_true = 1
     node_ctr = node_ctr + 1
 
-    for path in paths:
+    for path_tuple in paths_list:
+        path = path_tuple[1]
         sub_root = root_node
         prev_is_true = 1
         for c in path:
@@ -344,6 +382,17 @@ def build_path_tree(paths):
                 node_ctr = node_ctr + 1
 
             prev_is_true = c.sind
+        # Last node has the same name as the original node
+        temp.name = path_tuple[0]
+        reflection_node = findall_by_attr(tree_root, temp.name, name='name')
+        assert(len(reflection_node) == 1 and "Node not found" )
+        reflection_node = reflection_node[0]
+        temp.max_perf = reflection_node.max_perf
+        temp.min_perf = reflection_node.min_perf
+
+    for node in list(PostOrderIter(root_node)):
+        if(not node.is_leaf):
+            node.max_perf, node.min_perf = get_perf_variability(node)
 
     root_node = remove_spurious_branching(root_node)
     root_node = coalesce_constraints(root_node)
@@ -371,11 +420,9 @@ def get_node_path(node_name, root):
     return constraint_path
 
 
-def print_tree(root):
+def print_neg_tree(root):
     leaves = [node for node in list(LevelOrderIter(root)) if node.is_leaf]
-    ctr = 0
     for leaf in leaves:
-        ctr = ctr + 1
         s = ""
         leaf_path = get_node_path(leaf.name, root)
         s = "Cause(s) of violation:" + "\n"
@@ -387,6 +434,29 @@ def print_tree(root):
             s = s + prefix + c.subject + ") **AND** "
         s = s[0: (len(s)-len(" **AND** "))]  # Remove last and
         print(s)
+
+
+def print_res_tree(root):
+    leaves = [node for node in list(LevelOrderIter(root)) if node.is_leaf]
+    for leaf in leaves:
+        s = ""
+        leaf_path = get_node_path(leaf.name, root)
+        for c in leaf_path:
+            if(c.sind):
+                prefix = "(Eq true "
+            else:
+                prefix = "(Eq false "
+            s = s + prefix + c.subject + ") **AND** "
+        s = s[0: (len(s)-len(" **AND** "))]  # Remove last and
+        s = s+"," + "%d" % (int((leaf.max_perf + leaf.min_perf)/2))
+        print(s)
+
+
+def print_tree(root):
+    if(tree_type == "neg_tree"):
+        print_neg_tree(root)
+    else:
+        print_res_tree(root)
 
 
 def get_node_depth(node):
@@ -528,7 +598,11 @@ def merge_nodes(final, merged_in):
     final.min_perf = min(final.min_perf, merged_in.min_perf)
 
 
-def perf_within_resolution(perf):
+def can_merge_perf(perf1, perf2):
+    return (abs(perf2-perf1) <= perf_resolution)
+
+
+def perf_within_envelope(perf):
     return (perf >= expected_perf-perf_resolution and perf <= expected_perf+perf_resolution)
 
 
@@ -567,7 +641,10 @@ def compare_trees(node1, node2):
         return 0
     elif(node1.is_leaf):
         # Node2 is also a leaf node because of above check
-        return 1
+        if(tree_type == "neg-tree"):
+            return 1
+        else:
+            return can_merge_perf(max(node1.max_perf, node2.max_perf), min(node1.min_perf, node2.min_perf))
     else:  # Can have one child because coalescing is done later
         if(len(node1.children) == 1):
             if(not (node1.children[0].is_true == node2.children[0].is_true)):
@@ -596,6 +673,21 @@ def are_similar_formulae(formula_var):
             pcvs_used[formula].append(pcvs)
     expected_pcv_set = set(pcvs_used[list(formula_var)[0]])
     return all(set(pcv_list) == expected_pcv_set for pcv_list in pcvs_used.values())
+
+
+def assign_tags_and_perf(root):
+    for node in list(PostOrderIter(root)):
+        if(node.is_leaf):
+            node.max_perf = traces_perf[node.name]
+            node.min_perf = node.max_perf
+            node.formula.add(traces_perf_formula[node.name])
+            if(node.name in traces_tags):
+                node.tags = traces_tags[node.name]
+
+        else:
+            node.max_perf, node.min_perf = get_perf_variability(node)
+            assign_tags(node)
+    return root
 
 
 def assign_tags(node):
@@ -632,7 +724,7 @@ def node_identifier_fn(node):
         # identifier += '%s' % (tests)
 
         identifier += '\nPerf = %s' % ((node.max_perf + node.min_perf)/2)
-        identifier += '\nFormula = %s' % (repr(node.formula))
+        # identifier += '\nFormula = %s' % (repr(node.formula))
 
     else:
         identifier = '%s:%s:%s\n Perf Var = %s' % (
