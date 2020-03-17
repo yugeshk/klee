@@ -116,14 +116,12 @@ def main():
 
                     if(stateful or dpdk or verif or time):
                         currently_demarcated = 1
-                        if(current_fn_name == " dmap_get_value"):
+                        if(current_fn_name == " dmap_get_value" or current_fn_name == " vector_return"):
                             current_fn_name = " klee_forbid_access"  # Jump instead of call
                         elif(current_fn_name == " map_put" or current_fn_name == " map_erase"):
                             current_fn_name = " klee_trace_extra_ptr"  # Jump instead of call
                         elif(current_fn_name == " dchain_is_index_allocated"):
                             current_fn_name = " klee_int"  # Jump instead of call
-                        elif(current_fn_name == " vector_borrow" or current_fn_name == " vector_return"):
-                            current_fn_name = " ds_path_1"  # Jump instead of call
                         elif(current_fn_name == " flood"):
                             current_fn_name = "flood"  # Will always fail and exit
                         currently_demarcated_fn = current_fn_name

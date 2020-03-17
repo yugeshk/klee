@@ -12,6 +12,8 @@ import os
 ip_file = sys.argv[1]  # Symbolic address trace
 op_file = sys.argv[2]  # Classified address trace
 common_file = sys.argv[3]  # File with common cache contents
+
+
 cache_size = 32768
 cache_block_size = 64
 set_associativity = 8
@@ -42,12 +44,12 @@ def main():
                 m1 = symbol_re.match(text)
                 m2 = symbol2_re.match(text)
                 if(m1):
-                    age_cache_contents()
                     output.write(text+"\n")
                 elif(m2):
                     output.write(text+"\n")
                 else:
-                    addr = int(text, 16)
+                    text = text.split(":")
+                    addr = int(text[1], 16)
                     block_no = addr//cache_block_size  # Integer division
                     set_no = block_no % num_sets
                     if block_no not in cache_contents[set_no] and block_no in common_lines:

@@ -80,8 +80,6 @@ def main():
                                 # All the setup is done. Now pull in the regs, take the values, generate the cache lines, do this for the rest of the list  and delete the damn entry
                                 for top_cstate_entry in rel_cstate[called_fn_id]:
                                     reg = top_cstate_entry[index3+1:index4]
-                                    # print(top_cstate_entry)
-                                    # print(reg)
                                     reg_values = [
                                         int(value) for value in top_cstate_entry[index4+1:].split()]
                                     meta_lines = [
@@ -90,20 +88,14 @@ def main():
                                         index5 = find_nth(each_line, "(", 1)
                                         meta_reg = each_line[0:index5-1]
                                         if(meta_reg == reg):
-                                            # print(meta_reg)
-                                            # print(meta_lines)
                                             index6 = find_nth(
                                                 each_line, "=", 1)
                                             meta_reg_val = int(
                                                 each_line[index6+2:], 16)
                                             for value in reg_values:
-                                                output.write(
-                                                    str(hex(meta_reg_val+value))[2:].upper()+"\n")
+                                                output.write(called_fn_name+":" +
+                                                             str(hex(meta_reg_val+value))[2:].upper()+"\n")
                                                 duplicated = duplicated + 1
-                                            # print(meta_reg_val)
-                                            # print(reg_values)
-
-                                    # Now need to generate the cache line
 
                                 del rel_cstate[called_fn_id]
 
@@ -111,14 +103,15 @@ def main():
                         output.write("Irrelevant to Trace\n")
                 else:
                     index = find_nth(text, "|", 4)
-                    text = text[index+1:]
-                    if(text == ""):
+                    addrs = text[index+1:]
+                    if(addrs == ""):
                         output.write("Non-memory instruction\n")
-                    words = text.split()
-                    for addr in words:
+                    addrs = addrs.split()
+                    index = find_nth(text, "|", 1)
+                    pc = text[0:index].rstrip()
+                    for addr in addrs:
                         addr = addr[1:]  # Removing 'r' and 'w' tags
-                        output.write(addr)
-                        output.write("\n")
+                        output.write(pc+":"+addr+"\n")
 
     with open(duplicated_stats_file, "w") as dup_op:
         dup_op.write(str(duplicated)+"\n")

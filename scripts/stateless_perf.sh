@@ -35,11 +35,9 @@ echo Generating address traces
 
 parallel "python $py_scripts_dir/print_addresses.py {} \$(basename {} .packet.demarcated).tracelog.demarcated concrete-state-log.txt \$(basename {} .packet.demarcated).packet.unclassified_mem_trace \$(basename {} .packet.demarcated).packet.duplicated" ::: *.packet.demarcated
 
-echo Generating common set of adddresses 
-
-parallel "python $py_scripts_dir/cache_setup.py {} \$(basename {} .packet.unclassified_mem_trace).packet.cache_remnants" ::: *.packet.unclassified_mem_trace
-touch relevant_traces
-python $py_scripts_dir/intersection_set.py $traces_dir common_stateless_cache_remnants relevant_traces
+echo Checking new hypothesis
+touch common_stateless_cache_remnants
+python $py_scripts_dir/check_symbolic_addresses.py ./ common_stateless_cache_remnants $py_scripts_dir/fn_lists/stateful_fns.txt
 
 echo Classifiying address traces 
 
