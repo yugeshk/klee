@@ -25,27 +25,27 @@ fi
 
 echo Generating demarcated instruction traces 
 
-parallel "python $py_scripts_dir/demarcate_trace.py {} \$(basename {} .packet_relevant_instructions).packet.demarcated \$(basename {} .packet_relevant_instructions).packet_relevant_tracelog \$(basename {} .packet_relevant_instructions).tracelog.demarcated  $py_scripts_dir/fn_lists/stateful_fns.txt $stub_file  $py_scripts_dir/fn_lists/time_fns.txt $py_scripts_dir/fn_lists/verif_fns.txt" ::: *.packet_relevant_instructions 
+parallel "python3 $py_scripts_dir/demarcate_trace.py {} \$(basename {} .packet_relevant_instructions).packet.demarcated \$(basename {} .packet_relevant_instructions).packet_relevant_tracelog \$(basename {} .packet_relevant_instructions).tracelog.demarcated  $py_scripts_dir/fn_lists/stateful_fns.txt $stub_file  $py_scripts_dir/fn_lists/time_fns.txt $py_scripts_dir/fn_lists/verif_fns.txt" ::: *.packet_relevant_instructions 
 
 echo Cleaning up instruction traces to allow path comparison
 
-parallel "python $py_scripts_dir/cleanup-instr-trace.py {} \$(basename {} .packet.demarcated).packet.comparison.trace" ::: *.packet.demarcated 
+parallel "python3 $py_scripts_dir/cleanup-instr-trace.py {} \$(basename {} .packet.demarcated).packet.comparison.trace" ::: *.packet.demarcated 
 
 echo Generating address traces
 
-parallel "python $py_scripts_dir/print_addresses.py {} \$(basename {} .packet.demarcated).tracelog.demarcated concrete-state-log.txt \$(basename {} .packet.demarcated).packet.unclassified_mem_trace \$(basename {} .packet.demarcated).packet.duplicated" ::: *.packet.demarcated
+parallel "python3 $py_scripts_dir/print_addresses.py {} \$(basename {} .packet.demarcated).tracelog.demarcated concrete-state-log.txt \$(basename {} .packet.demarcated).packet.unclassified_mem_trace \$(basename {} .packet.demarcated).packet.duplicated" ::: *.packet.demarcated
 
 echo Checking new hypothesis
 touch common_stateless_cache_remnants
-python $py_scripts_dir/check_symbolic_addresses.py ./ common_stateless_cache_remnants $py_scripts_dir/fn_lists/stateful_fns.txt
+python3 $py_scripts_dir/check_symbolic_addresses.py ./ common_stateless_cache_remnants $py_scripts_dir/fn_lists/stateful_fns.txt
 
 echo Classifiying address traces 
 
 parallel "python $py_scripts_dir/formal_cache.py {} \$(basename {} .packet.unclassified_mem_trace).packet.classified_mem_trace common_stateless_cache_remnants" ::: *.packet.unclassified_mem_trace
 
 echo Putting it together 
-python $py_scripts_dir/stateless_stats.py ./ comp_insns num_accesses num_hits num_misses trace_nos
-python $py_scripts_dir/stateless_perf.py  comp_insns num_accesses num_hits num_misses trace_nos $output 
+python3 $py_scripts_dir/stateless_stats.py ./ comp_insns num_accesses num_hits num_misses trace_nos
+python3 $py_scripts_dir/stateless_perf.py  comp_insns num_accesses num_hits num_misses trace_nos $output 
 
 rm -f $traces_dir/*.packet.stateless_mem_trace \
       $traces_dir/*.packet.stateless_mem_trace.classified

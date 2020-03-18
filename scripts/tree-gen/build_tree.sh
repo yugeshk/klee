@@ -44,7 +44,7 @@ METRICS=("instruction count")
 for METRIC in "${METRICS[@]}"; 
 do 
   METRIC_NAME=$(echo "$METRIC" | sed -e 's/ /_/')
-  python $KLEE_DIR/scripts/tree-gen/build_tree.py tc_tags combined_perf.txt perf-formula.txt "$METRIC" $TREE_TYPE $TREE_FILE $CONSTRAINT_FILE $EXPECTED_PERF $RESOLUTION $CONSTRAINT_NODE
+  python3 $KLEE_DIR/scripts/tree-gen/build_tree.py tc_tags combined_perf.txt perf-formula.txt "$METRIC" $TREE_TYPE $TREE_FILE $CONSTRAINT_FILE $EXPECTED_PERF $RESOLUTION $CONSTRAINT_NODE
 done
 
 popd >> /dev/null
