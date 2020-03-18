@@ -187,77 +187,27 @@ def main():
     get_traces_perf()
     get_traces_tags()
     build_tree(tree_file)
+    assign_tree_constraints(tree_root)
+    assign_tree_tags_and_perf(tree_root)
 
-    # Remove nodes with no siblings.
-    for node in list(PostOrderIter(tree_root))[:]:
-        while(len(node.siblings) == 0):
-            # We do not want to coalesce the root or the first node
-            if(node.parent == tree_root or node.is_root):
-                break
-            else:
-                curr_parent = node.parent
-                new_parent = curr_parent.parent
-                node.parent = new_parent
-                curr_parent.parent = None
-
-    # Assigning constraints to each node. Has to be done once we have a binary tree (remove spurious nodes)
-    for node in list(PostOrderIter(tree_root)):
-        if(not node.is_leaf and not node.is_root):
-            node.constraints = get_node_constraints(node)
-            node.children[node.constraints.sind].is_true = 1
-            node.children[(node.constraints.sind+1) % 2].is_true = 0
-
-    # Let's assign tags and performance now
-    tree_root = assign_tags_and_perf(tree_root)
-
+    # Now, for the neg-tree we remove all nodes that are within the performance envelope
     deleted_nodes = list()
     if(tree_type == "neg-tree"):
-        # Finding violations due to loop PCVs:
-        for node in list(PostOrderIter(tree_root)):
-            if(node.is_leaf):
-                perf = parse_expr(
-                    traces_perf_formula[node.name]).subs(extreme_vals)
-                if(not perf_within_envelope(perf) and ("*" in traces_perf_formula[node.name])):
-                    loop_pcv_violations.add(
-                        traces_perf_formula[node.name])
-        loop_pcv_violations = merge_formulae(loop_pcv_violations)
+        deleted_nodes = remove_sat_nodes(tree_root)
 
-        # Finding violations due to branch PCVs
-        for node in list(LevelOrderIter(tree_root))[:]:
-            if((not node.is_leaf and perf_within_envelope(node.max_perf) and perf_within_envelope(node.min_perf)) or (node.is_leaf and perf_within_envelope(node.max_perf))):
-                node.parent = None
-                deleted_nodes.append(node.name)
-
-    # All nodes left are now perf violations, so let's assign formulae to intermediate nodes
+    # Re-assigning formulae since neg-tree might have deleted certain nodes.
     for node in list(LevelOrderIter(tree_root)):
-        if(not node.is_leaf):
-            for sub_node in node.sub_tests:
-                if(sub_node in traces_perf_formula and sub_node not in deleted_nodes):
-                    node.formula.add(traces_perf_formula[sub_node])
+        for sub_node in node.sub_tests:
+            if(sub_node in traces_perf_formula and sub_node not in deleted_nodes):
+                node.formula.add(traces_perf_formula[sub_node])
 
-    if(tree_type == "neg-tree"):
-        # Now we remove subtrees entirely
-        for node in list(LevelOrderIter(tree_root))[:]:
-            if((not node.is_leaf) and (not bool(set(node.sub_tests) & set(deleted_nodes)))):
-                node.constraints = Constraint()
-                for child in list(node.children):
-                    child.parent = None
-
-    # Now we want to remove spurious, violation-unrelated branching
     tree_root = remove_spurious_branching(tree_root)
 
-    # Next step - constraint coalescing
     tree_root = coalesce_constraints(tree_root)
 
     # Coalescing leaves for the res-tree
     if(tree_type == "res-tree"):
-        # Now, let's coalesce nodes perf variability less than input resolution!
-        for node in list(PostOrderIter(tree_root)):
-            if(not node.is_leaf and can_merge_perf(node.max_perf, node.min_perf)):
-                # TODO: Need to coalesce formula
-                for child in list(node.children):
-                    child.parent = None
-                node.constraints = Constraint()  # Because it is now a leaf
+        coalesce_within_resolution(tree_root)
 
     pretty_print_tree(tree_root)
 
@@ -269,6 +219,59 @@ def main():
     DotExporter(tree_root,
                 nodenamefunc=node_identifier_fn,
                 nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+
+
+def coalesce_within_resolution(root):
+    for node in list(PostOrderIter(root)):
+        if(not node.is_leaf and can_merge_perf(node.max_perf, node.min_perf)):
+            for child in list(node.children):
+                child.parent = None
+            node.constraints = Constraint()  # Because it is now a leaf
+
+
+def remove_sat_nodes(root):
+    global loop_pcv_violations
+    deleted_nodes = []
+    # Finding violations due to loop PCVs:
+    for node in list(PostOrderIter(root)):
+        if(node.is_leaf):
+            perf = parse_expr(
+                traces_perf_formula[node.name]).subs(extreme_vals)
+            if(not perf_within_envelope(perf) and ("*" in traces_perf_formula[node.name])):
+                loop_pcv_violations.add(
+                    traces_perf_formula[node.name])
+    loop_pcv_violations = merge_formulae(loop_pcv_violations)
+
+    # Finding nodes that fall within the envelope and deleting them
+    for node in list(LevelOrderIter(root))[:]:
+        if((not node.is_leaf and perf_within_envelope(node.max_perf) and perf_within_envelope(node.min_perf)) or (node.is_leaf and perf_within_envelope(node.max_perf))):
+            node.parent = None
+            deleted_nodes.append(node.name)
+
+    # Now we simplify the remaining nodes by getting rid of subtrees entirely
+    for node in list(LevelOrderIter(root))[:]:
+        if((not node.is_leaf) and (not bool(set(node.sub_tests) & set(deleted_nodes)))):
+            node.constraints = Constraint()
+            for child in list(node.children):
+                child.parent = None
+
+    return deleted_nodes
+
+
+def basic_cleanup_tree(root):
+    # Removes nodes with no siblings.
+    for node in list(PostOrderIter(root))[:]:
+        if(node.parent == None):  # Some nodes get detached during this process
+            continue
+        while(len(node.siblings) == 0):
+            # We do not want to coalesce the root or the first node
+            if(node.parent == root or node == root):
+                break
+            else:
+                curr_parent = node.parent
+                new_parent = curr_parent.parent
+                node.parent = new_parent
+                curr_parent.parent = None
 
 
 def pretty_print_tree(root):
@@ -324,7 +327,7 @@ def pretty_print_neg_tree(root):
 
 
 def pretty_print_res_tree(root):
-    #TODO: This can be done even better. What if you minimize this by bucket, just like you did for the formula in the neg_tree
+    # TODO: This can be done even better. What if you minimize this by bucket, just like you did for the formula in the neg_tree
     nodes_by_depth = {}
     # Now we put together branch PCV violations in a user-friendly format
     for node in PostOrderIter(tree_root):
@@ -385,7 +388,7 @@ def build_path_tree(paths_list):
         # Last node has the same name as the original node
         temp.name = path_tuple[0]
         reflection_node = findall_by_attr(tree_root, temp.name, name='name')
-        assert(len(reflection_node) == 1 and "Node not found" )
+        assert(len(reflection_node) == 1 and "Node not found")
         reflection_node = reflection_node[0]
         temp.max_perf = reflection_node.max_perf
         temp.min_perf = reflection_node.min_perf
@@ -555,6 +558,7 @@ def coalesce_constraints(root):
 
 
 def remove_spurious_branching(root):
+    # Removes spurious, perf-unrelated branching
     for node in list(LevelOrderIter(root))[:]:
         children = list(node.children)
         if(node.parent != None and len(children) == 2 and (not children[0].is_leaf) and compare_trees_wrapper(children[0], children[1])):
@@ -675,7 +679,49 @@ def are_similar_formulae(formula_var):
     return all(set(pcv_list) == expected_pcv_set for pcv_list in pcvs_used.values())
 
 
-def assign_tags_and_perf(root):
+def assign_tree_constraints(root):
+    # Assumes a binary tree as input.
+    for node in list(PostOrderIter(root)):
+        if((not node.is_leaf) and (not node == root)):
+            node.constraints = assign_node_constraints(node)
+            node.children[node.constraints.sind].is_true = 1
+            node.children[(node.constraints.sind+1) % 2].is_true = 0
+
+
+def assign_node_constraints(node):
+    assert(node != None and "node not present")
+    assert(len(node.children) == 2 and "Leaf node provided")
+    children = list(node.children)
+    assert(len(children[0].sub_tests) > 0 and len(children[1].sub_tests))
+    test1 = int(children[0].sub_tests[0].replace("test", ""))
+    test2 = int(children[1].sub_tests[0].replace("test", ""))
+    constraints = prefix_branch_constraints[test1][test2]
+    # In the above matrix, the first constraint in the list always points to the test with the smaller numeric value.
+    # That is a property of how the constraints are dumped from KLEE
+    if(test1 > test2):  # Need to re-order the list.
+        constraints = [constraints[1], constraints[0]]
+    # Now we can be sure that the constraints are ordered by the children
+    assert(len(constraints) > 0)
+    if(len(constraints[0]) > len(constraints[1])):
+        short_constraint = constraints[1]
+        long_constraint = constraints[0]
+        short_ind = 1
+    else:
+        short_constraint = constraints[0]
+        long_constraint = constraints[1]
+        short_ind = 0
+
+    short_constraint = short_constraint.rstrip()
+    long_constraint = long_constraint.replace('\n', '')
+    short_constraint = short_constraint.replace('\n', '')
+    assert(long_constraint[0:long_constraint.find(
+        short_constraint)] == "(Eq false")
+
+    subject = short_constraint
+    return Constraint(subject, short_ind)
+
+
+def assign_tree_tags_and_perf(root):
     for node in list(PostOrderIter(root)):
         if(node.is_leaf):
             node.max_perf = traces_perf[node.name]
@@ -686,11 +732,10 @@ def assign_tags_and_perf(root):
 
         else:
             node.max_perf, node.min_perf = get_perf_variability(node)
-            assign_tags(node)
-    return root
+            assign_node_tags(node)
 
 
-def assign_tags(node):
+def assign_node_tags(node):
     # Returns tags for an intermediate node in the tree.
     # A node has a particular tag iff all its descendants have that tag
     children = list(node.children)
@@ -766,39 +811,6 @@ def del_node(node):
             parent = node.parent
             node.parent = None
             node = parent
-
-
-def get_node_constraints(node):
-    assert(node != None and "node not present")
-    assert(len(node.children) == 2 and "Leaf node provided")
-    children = list(node.children)
-    assert(len(children[0].sub_tests) > 0 and len(children[1].sub_tests))
-    test1 = int(children[0].sub_tests[0].replace("test", ""))
-    test2 = int(children[1].sub_tests[0].replace("test", ""))
-    constraints = prefix_branch_constraints[test1][test2]
-    # In the above matrix, the first constraint in the list always points to the test with the smaller numeric value.
-    # That is a property of how the constraints are dumped from KLEE
-    if(test1 > test2):  # Need to re-order the list.
-        constraints = [constraints[1], constraints[0]]
-    # Now we can be sure that the constraints are ordered by the children
-    assert(len(constraints) > 0)
-    if(len(constraints[0]) > len(constraints[1])):
-        short_constraint = constraints[1]
-        long_constraint = constraints[0]
-        short_ind = 1
-    else:
-        short_constraint = constraints[0]
-        long_constraint = constraints[1]
-        short_ind = 0
-
-    short_constraint = short_constraint.rstrip()
-    long_constraint = long_constraint.replace('\n', '')
-    short_constraint = short_constraint.replace('\n', '')
-    assert(long_constraint[0:long_constraint.find(
-        short_constraint)] == "(Eq false")
-
-    subject = short_constraint
-    return Constraint(subject, short_ind)
 
 
 def build_tree(tree_file):
@@ -879,6 +891,8 @@ def build_tree(tree_file):
             leaf_node = find(
                 tree_root, lambda node: node.name == leaf_node_name)
             del_node(leaf_node)
+
+    basic_cleanup_tree(tree_root)
 
 
 def get_traces_perf():
