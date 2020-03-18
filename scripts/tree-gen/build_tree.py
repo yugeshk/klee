@@ -33,55 +33,25 @@ constraint_node = sys.argv[10]
 class Constraint:
 
     def __init__(self, subject=None, sind=None):
-        self._subject = subject  # Main clause of constraint
-        self._sind = sind  # Used to indicate if first or second child follows true branch
-
-    @property
-    def subject(self):
-        return self._subject
-
-    @subject.setter
-    def subject(self, value):
-        self._subject = value
-
-    @property
-    def sind(self):
-        return self._sind
-
-    @sind.setter
-    def sind(self, value):
-        self._sind = value
+        self.subject = subject  # Main clause of constraint
+        self.sind = sind  # Used to indicate if first or second child follows true branch
 
 
 class MyNode(Constraint):
 
     def __init__(self, name, id, depth):
-        self._name = name
-        self._id = id
-        self._depth = depth  # Depth of root is -1.
-        self._tags = []
-        self._max_perf = -1
-        self._min_perf = -1
-        self._formula = set()
-        self._sub_tests = []
-        self._constraints = Constraint()
-        self._is_true = -1
+        self.name = name
+        self.id = id
+        self.depth = depth  # Depth of root is -1.
+        self.tags = []
+        self.max_perf = -1
+        self.min_perf = -1
+        self.formula = set()
+        self.sub_tests = []
+        self.constraints = Constraint()
+        self.is_true = -1
 
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        self._name = value
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, value):
-        self._id = value
+    # TODO:Think this is necessary to override similar field in NodeMixin. Not sure. Code fails without it
 
     @property
     def depth(self):
@@ -90,62 +60,6 @@ class MyNode(Constraint):
     @depth.setter
     def depth(self, value):
         self._depth = value
-
-    @property
-    def tags(self):
-        return self._tags
-
-    @tags.setter
-    def tags(self, value):
-        self._tags = value
-
-    @property
-    def max_perf(self):
-        return self._max_perf
-
-    @max_perf.setter
-    def max_perf(self, value):
-        self._max_perf = value
-
-    @property
-    def min_perf(self):
-        return self._min_perf
-
-    @min_perf.setter
-    def min_perf(self, value):
-        self._min_perf = value
-
-    @property
-    def formula(self):
-        return self._formula
-
-    @formula.setter
-    def formula(self, value):
-        self._formula = value
-
-    @property
-    def sub_tests(self):
-        return self._sub_tests
-
-    @sub_tests.setter
-    def sub_tests(self, value):
-        self._sub_tests = value
-
-    @property
-    def constraints(self):
-        return self._constraints
-
-    @constraints.setter
-    def constraints(self, value):
-        self._constraints = value
-
-    @property
-    def is_true(self):
-        return self._is_true
-
-    @is_true.setter
-    def is_true(self, value):
-        self._is_true = value
 
 
 class TreeNode(MyNode, NodeMixin):
@@ -574,7 +488,7 @@ def remove_spurious_branching(root):
                 merge_nodes(final, merged_in)
             children[1].parent = None
             children[0].parent = node.parent
-            children[0].is_true = node._is_true
+            children[0].is_true = node.is_true
             node.parent = None
     return root
 
