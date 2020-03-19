@@ -51,7 +51,8 @@ class MyNode(Constraint):
         self.constraints = Constraint()
         self.is_true = -1
 
-    # TODO:Think this is necessary to override similar field in NodeMixin. Not sure. Code fails without it
+    # TODO:Figure out why this is necessary.Code fails without it
+    # Think it is required to override similar field in NodeMixin. Not sure.
 
     @property
     def depth(self):
@@ -105,7 +106,7 @@ def main():
     else:
         process_res_tree()
 
-    # pretty_print_tree(tree_root)
+    pretty_print_tree(tree_root)
     print_tree_image(tree_root)
 
     if(constraint_node != "none"):
