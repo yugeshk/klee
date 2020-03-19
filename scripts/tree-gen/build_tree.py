@@ -96,43 +96,65 @@ loop_pcv_root_cause = "e,c,t <= 65536"
 
 def main():
     global tree_root
-    global constraint_thresholds
-    global loop_pcv_violations
+
+    setup()
+    build_basic_tree(tree_file, tree_root)
+
+    if(tree_type == "neg-tree"):
+        process_neg_tree()
+    else:
+        process_res_tree()
+
+    # pretty_print_tree(tree_root)
+    print_tree_image(tree_root)
+
+    if(constraint_node != "none"):
+        debug_constraints(constraint_node)
+
+
+def setup():
     get_traces_perf()
     get_traces_tags()
+
+
+def build_basic_tree(tree_file, tree_root):
     build_tree(tree_file)
     assign_tree_constraints(tree_root)
     assign_tree_tags_and_perf(tree_root)
 
-    # Now, for the neg-tree we remove all nodes that are within the performance envelope
-    deleted_nodes = list()
-    if(tree_type == "neg-tree"):
-        deleted_nodes = remove_sat_nodes(tree_root)
 
-    # Re-assigning formulae since neg-tree might have deleted certain nodes.
+def process_res_tree():
+    global tree_root
+    coalesce_within_resolution(tree_root)
+    tree_root = remove_spurious_branching(tree_root)
+    tree_root = coalesce_constraints(tree_root)
+
+
+def process_neg_tree():
+    global tree_root
+    deleted_nodes = list()
+    deleted_nodes = remove_sat_nodes(tree_root)
+
+    # Re-assigning formulae since certain nodes might have been deleted
     for node in list(LevelOrderIter(tree_root)):
         for sub_node in node.sub_tests:
             if(sub_node in traces_perf_formula and sub_node not in deleted_nodes):
                 node.formula.add(traces_perf_formula[sub_node])
 
     tree_root = remove_spurious_branching(tree_root)
-
     tree_root = coalesce_constraints(tree_root)
 
-    # Coalescing leaves for the res-tree
-    if(tree_type == "res-tree"):
-        coalesce_within_resolution(tree_root)
 
-    pretty_print_tree(tree_root)
-
-    if(constraint_node != "none"):
-        node = find(
-            tree_root, lambda node: node.name == constraint_node)
-        pretty_print_constraints(node)
-
-    DotExporter(tree_root,
+def print_tree_image(root):
+    DotExporter(root,
                 nodenamefunc=node_identifier_fn,
                 nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+
+
+def debug_constraints(node_name):
+    global tree_root
+    node = find(tree_root, lambda node: node.name == node_name)
+    pretty_print_constraints(node)
 
 
 def coalesce_within_resolution(root):
@@ -393,81 +415,87 @@ def get_node_depth(node):
 
 
 def coalesce_constraints(root):
-    for node in PostOrderIter(root):
-        children = list(node.children)
-        if(not node.is_leaf and not node.is_root and len(children) == 2):
-            grandchildren_1 = list(children[0].children)
-            grandchildren_2 = list(children[1].children)
-            # Now constraint coalescing is possible
-            if(len(grandchildren_1) + len(grandchildren_2) > 2):  # Have to have atleast 3 grandchildren
-                uncle = None
-                dad = None
-                nephew = None
-                neice = None
+    # This is an iterative process.
+    changed = 1
+    while(changed):
+        changed = 0
+        for node in PostOrderIter(root):
+            children = list(node.children)
+            if(not node.is_leaf and not node.is_root and len(children) == 2):
+                grandchildren_1 = list(children[0].children)
+                grandchildren_2 = list(children[1].children)
+                # Now constraint coalescing is possible
+                # Have to have atleast 3 grandchildren
+                if(len(grandchildren_1) + len(grandchildren_2) > 2):
+                    uncle = None
+                    dad = None
+                    nephew = None
+                    neice = None
 
-                # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
+                    # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
 
-                if(compare_trees_wrapper(children[0], grandchildren_2[0])):
-                    uncle = children[0]
-                    dad = children[1]
-                    nephew = grandchildren_2[0]
-                    if(len(grandchildren_2) > 1):
-                        neice = grandchildren_2[1]
-                elif(compare_trees_wrapper(children[1], grandchildren_1[0])):
-                    uncle = children[1]
-                    dad = children[0]
-                    nephew = grandchildren_1[0]
-                    if(len(grandchildren_1) > 1):
-                        neice = grandchildren_1[1]
-                elif(len(grandchildren_2) > 1 and compare_trees_wrapper(children[0], grandchildren_2[1])):
-                    uncle = children[0]
-                    dad = children[1]
-                    nephew = grandchildren_2[1]
-                    neice = grandchildren_2[0]
+                    if(compare_trees_wrapper(children[0], grandchildren_2[0])):
+                        uncle = children[0]
+                        dad = children[1]
+                        nephew = grandchildren_2[0]
+                        if(len(grandchildren_2) > 1):
+                            neice = grandchildren_2[1]
+                    elif(compare_trees_wrapper(children[1], grandchildren_1[0])):
+                        uncle = children[1]
+                        dad = children[0]
+                        nephew = grandchildren_1[0]
+                        if(len(grandchildren_1) > 1):
+                            neice = grandchildren_1[1]
+                    elif(len(grandchildren_2) > 1 and compare_trees_wrapper(children[0], grandchildren_2[1])):
+                        uncle = children[0]
+                        dad = children[1]
+                        nephew = grandchildren_2[1]
+                        neice = grandchildren_2[0]
 
-                elif(len(grandchildren_1) > 1 and compare_trees_wrapper(children[1], grandchildren_1[1])):
-                    uncle = children[1]
-                    dad = children[0]
-                    nephew = grandchildren_1[1]
-                    neice = grandchildren_1[0]
+                    elif(len(grandchildren_1) > 1 and compare_trees_wrapper(children[1], grandchildren_1[1])):
+                        uncle = children[1]
+                        dad = children[0]
+                        nephew = grandchildren_1[1]
+                        neice = grandchildren_1[0]
 
-                if(uncle != None):  # Merging the two nodes if within resolution
-                    for pair in merged_tuples:
-                        # Sanity check that the tuple always has a node from uncle and then nephew.
-                        # Mostly redundant, but left here in any case
-                        assert(len(findall_by_attr(uncle, pair[0], name='name')) == 1
-                               and len(findall_by_attr(nephew, pair[1], name='name')) == 1)
-                        final = findall_by_attr(
-                            uncle, pair[0], name='name')[0]
-                        merged_in = findall_by_attr(
-                            nephew, pair[1], name='name')[0]
-                        merge_nodes(final, merged_in)
+                    if(uncle != None):  # Merging the two nodes
+                        for pair in merged_tuples:
+                            # Sanity check that the tuple always has a node from uncle and then nephew.
+                            # Mostly redundant, but left here in any case
+                            assert(len(findall_by_attr(uncle, pair[0], name='name')) == 1
+                                   and len(findall_by_attr(nephew, pair[1], name='name')) == 1)
+                            final = findall_by_attr(
+                                uncle, pair[0], name='name')[0]
+                            merged_in = findall_by_attr(
+                                nephew, pair[1], name='name')[0]
+                            merge_nodes(final, merged_in)
 
-                    # Modify the constraints in the current node
-                    curr_subj = node.constraints.subject
-                    merged_in_subj = dad.constraints.subject
-                    uncle_ind = children.index(uncle)
-                    if(uncle.is_true):
-                        conjunction = "OR"
-                        new_sind = uncle_ind
-                    else:
-                        conjunction = "AND"
-                        new_sind = (uncle_ind+1) % 2
+                        # Modify the constraints in the current node
+                        curr_subj = node.constraints.subject
+                        merged_in_subj = dad.constraints.subject
+                        uncle_ind = children.index(uncle)
+                        if(uncle.is_true):
+                            conjunction = "OR"
+                            new_sind = uncle_ind
+                        else:
+                            conjunction = "AND"
+                            new_sind = (uncle_ind+1) % 2
 
-                    if((uncle.is_true + nephew.is_true) % 2 == 1):
+                        if((uncle.is_true + nephew.is_true) % 2 == 1):
+                            if(neice != None):
+                                neice.is_true = (neice.is_true+1) % 2
+                            merged_in_subj = "(Eq false " + merged_in_subj
+
+                        final_subj = "(" + curr_subj + " " + \
+                            conjunction + " " + merged_in_subj + ")"
+                        node.constraints = Constraint(final_subj, new_sind)
+
+                        # Fix the branching
+                        dad.parent = None
+                        nephew.parent = None
                         if(neice != None):
-                            neice.is_true = (neice.is_true+1) % 2
-                        merged_in_subj = "(Eq false " + merged_in_subj
-
-                    final_subj = "(" + curr_subj + " " + \
-                        conjunction + " " + merged_in_subj + ")"
-                    node.constraints = Constraint(final_subj, new_sind)
-
-                    # Fix the branching
-                    dad.parent = None
-                    nephew.parent = None
-                    if(neice != None):
-                        neice.parent = node
+                            neice.parent = node
+                        changed = 1
     return root
 
 
@@ -668,7 +696,9 @@ def get_perf_variability(node):
 
 
 def node_colour_fn(node):
-    if(node.is_leaf):
+    if(node.name == "branch003648"):
+        colour = "fillcolor = red,fontcolor = white"
+    elif(node.is_leaf):
         colour = "fillcolor = blue,fontcolor = white"
     else:
         colour = "fillcolor = white,fontcolor = black"
