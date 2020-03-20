@@ -43,7 +43,7 @@ pushd trace-instructions
 popd
 
 # Tree generation
-sudo apt install python 3.7
-sudo apt install python3-pip
+sudo apt-get install python3
+sudo apt-get install python3-pip
 sudo pip install anytree
 sudo pip install sympy
