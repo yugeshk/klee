@@ -6,6 +6,7 @@ import string
 import os
 import math
 import operator
+import subprocess
 
 # https://anytree.readthedocs.io/en/latest/index.html
 from anytree import NodeMixin, RenderTree, PostOrderIter, LevelOrderIter
@@ -87,6 +88,7 @@ prefix_branch_constraints = [[[]]]
 constraint_thresholds = {}
 loop_pcv_violations = set()
 branch_pcv_violations = {}
+cliff_res = set()
 
 tree_root = TreeNode("ROOT", -1, -1)
 
@@ -109,9 +111,6 @@ def main():
     else:
         process_res_tree()
 
-    pretty_print_tree(tree_root)
-    print_tree_image(tree_root)
-
     if(constraint_node != "none"):
         debug_constraints(constraint_node)
 
@@ -129,10 +128,21 @@ def build_basic_tree(tree_file, tree_root):
 
 def process_res_tree():
     global tree_root
+    global cliff_res
+    global perf_resolution
     find_merge_resolutions(tree_root)
-    coalesce_within_resolution(tree_root)
-    tree_root = remove_spurious_branching(tree_root)
-    tree_root = coalesce_constraints(tree_root)
+    cliff_res.add(0)
+    while(len(cliff_res)):
+        res = min(cliff_res)
+        perf_resolution = res
+        merge_nodes_at_res(tree_root, res)
+        cliff_res.remove(res)
+        # Need to do this repeatedly, since nodes change
+        find_merge_resolutions(tree_root)
+        cliff_res = get_cliff_points(tree_root)
+        if(len(cliff_res) == 0 or min(cliff_res) > res):
+            pretty_print_res_tree(tree_root)
+            print_tree_image(tree_root)
 
 
 def process_neg_tree():
@@ -148,12 +158,15 @@ def process_neg_tree():
 
     tree_root = remove_spurious_branching(tree_root)
     tree_root = coalesce_constraints(tree_root)
+    pretty_print_neg_tree(tree_root)
+    print_tree_image(tree_root)
 
 
 def print_tree_image(root):
+    tree_file_name = "tree-%d.dot" % (perf_resolution)
     DotExporter(root,
                 nodenamefunc=node_identifier_fn,
-                nodeattrfunc=node_colour_fn).to_dotfile("tree.dot")
+                nodeattrfunc=node_colour_fn).to_dotfile(tree_file_name)
 
 
 def debug_constraints(node_name):
@@ -162,12 +175,125 @@ def debug_constraints(node_name):
     pretty_print_constraints(node)
 
 
+def merge_nodes_at_res(root, res):
+    # TODO: Lots of code duplication in below functions. Need to refactor.
+    merge_nodes_simple(root, res)
+    # Need to do this repeatedly, since nodes change
+    find_merge_resolutions(root)
+    merge_nodes_spurious(root, res)
+    # Need to do this repeatedly, since nodes change
+    find_merge_resolutions(root)
+    merge_nodes_cc(root, res)
+
+
+def merge_nodes_simple(root, res):
+    for node in list(LevelOrderIter(root))[:]:
+        if((not node == root) and (node.parent != None) and (not node.is_leaf)):
+            if(node.merge_res <= res and node.merge_type == "simple"):
+                children = list(node.children)
+                for child in children:
+                    child.parent = None
+                node.constraints = Constraint()  # Because it is now a leaf
+                node.merge_res = float('inf')  # Because it is now a leaf
+
+
+def merge_nodes_spurious(root, res):
+    for node in list(LevelOrderIter(root))[:]:
+        if((not node == root) and (node.parent != None) and (not node.is_leaf)):
+            if(node.merge_res <= res and node.merge_type == "spurious"):
+                children = list(node.children)
+                assert(get_merge_res_wrapper(children[0], children[1]))
+                for pair in merged_tuples:
+                    # Sanity check that the tuple always has a node from child zero and then child one.
+                    # Mostly redundant, but left here in any case
+                    assert(len(findall_by_attr(children[0], pair[0], name='name')) == 1
+                           and len(findall_by_attr(children[1], pair[1], name='name')) == 1)
+                    final = findall_by_attr(
+                        children[0], pair[0], name='name')[0]
+                    merged_in = findall_by_attr(
+                        children[1], pair[1], name='name')[0]
+                    merge_nodes(final, merged_in)
+                children[1].parent = None
+                children[0].parent = node.parent
+                children[0].is_true = node.is_true
+                node.parent = None
+
+
+def merge_nodes_cc(root, res):
+    for node in list(LevelOrderIter(root))[:]:
+        if((not node == root) and (node.parent != None) and (not node.is_leaf)):
+            if(node.merge_res <= res and node.merge_type == "cc"):
+                children = list(node.children)
+                # This is the dad, since we are going in LevelOrder Iter
+                dad = node
+                grandad = node.parent
+                assert(len(dad.siblings) == 1)
+                uncle = list(dad.siblings)[0]
+                nephew = None
+                neice = None
+                if(compare_node_constraints(children[0], uncle)):
+                    nephew = children[0]
+                    if(len(children) > 1):
+                        neice = children[1]
+                else:
+                    nephew = children[1]
+                    if(len(children) > 1):
+                        neice = children[0]
+
+                assert(get_merge_res_wrapper(uncle, nephew))
+                for pair in merged_tuples:
+                    # Sanity check that the tuple always has a node from uncle and then nephew.
+                    # Mostly redundant, but left here in any case
+                    assert(len(findall_by_attr(uncle, pair[0], name='name')) == 1
+                           and len(findall_by_attr(nephew, pair[1], name='name')) == 1)
+                    final = findall_by_attr(
+                        uncle, pair[0], name='name')[0]
+                    merged_in = findall_by_attr(
+                        nephew, pair[1], name='name')[0]
+                    merge_nodes(final, merged_in)
+
+                # Modify the constraints in the current node
+                curr_subj = grandad.constraints.subject
+                merged_in_subj = dad.constraints.subject
+                uncle_ind = list(grandad.children).index(uncle)
+                if(uncle.is_true):
+                    conjunction = "OR"
+                    new_sind = uncle_ind
+                else:
+                    conjunction = "AND"
+                    new_sind = (uncle_ind+1) % 2
+
+                if((uncle.is_true + nephew.is_true) % 2 == 1):
+                    if(neice != None):
+                        neice.is_true = (neice.is_true+1) % 2
+                    merged_in_subj = "(Eq false " + merged_in_subj
+
+                final_subj = "(" + curr_subj + " " + \
+                    conjunction + " " + merged_in_subj + ")"
+                grandad.constraints = Constraint(final_subj, new_sind)
+
+                # Fix the branching
+                dad.parent = None
+                nephew.parent = None
+                if(neice != None):
+                    neice.parent = grandad
+
+
 def coalesce_within_resolution(root):
     for node in list(PostOrderIter(root)):
         if(not node.is_leaf and can_merge_perf(node.max_perf, node.min_perf)):
             for child in list(node.children):
                 child.parent = None
             node.constraints = Constraint()  # Because it is now a leaf
+
+
+def get_cliff_points(root):
+    cliff_points = set()
+    if(not list(root.children)[0].is_leaf):
+        for node in list(PostOrderIter(root)):
+            if(not node.is_leaf):
+                cliff_points.add(node.merge_res)
+    return cliff_points
 
 
 def remove_sat_nodes(root):
@@ -268,9 +394,8 @@ def pretty_print_neg_tree(root):
 
 
 def pretty_print_res_tree(root):
-    # TODO: This can be done even better. What if you minimize this by bucket, just like you did for the formula in the neg_tree
+    print("\n\n ** Tree at resolution %d **\n" % (perf_resolution))
     nodes_by_depth = {}
-    # Now we put together branch PCV violations in a user-friendly format
     for node in PostOrderIter(tree_root):
         if(node.is_leaf):
             node.depth = get_node_depth(node)  # Reusing depth
@@ -289,7 +414,6 @@ def pretty_print_res_tree(root):
 
 
 def build_path_tree(paths_list):
-
     # Setup
     root_node = TreeNode("depth_root", -1, -1)
     node_ctr = 0
@@ -522,9 +646,25 @@ def remove_spurious_branching(root):
 
 
 def find_merge_resolutions(root):
+    clear_merge_resolutions(root)
     for node in list(LevelOrderIter(root)):
+        assign_simple_res(node)
         assign_spurious_branching_res(node)
         assign_constraint_coalescing_res(node)
+
+
+def clear_merge_resolutions(root):
+    for node in list(LevelOrderIter(root)):
+        node.merge_res = float('inf')
+        node.merge_type = ""
+
+
+def assign_simple_res(node):
+    if(not node.is_leaf):
+        res = (node.max_perf - node.min_perf) + 1
+        if(node.merge_res > res):
+            node.merge_res = res
+            node.merge_type = "simple"
 
 
 def assign_spurious_branching_res(node):
@@ -607,10 +747,13 @@ def merge_nodes(final, merged_in):
     final.formula.update(merged_in.formula)
     final.max_perf = max(final.max_perf, merged_in.max_perf)
     final.min_perf = min(final.min_perf, merged_in.min_perf)
+    if(final.merge_res < merged_in.merge_res):
+        final.merge_res = merged_in.merge_res
+        final.merge_type = merged_in.merge_type
 
 
 def get_merging_res(perf1, perf2):
-    return (abs(perf2-perf1))
+    return (abs(perf2-perf1)) + 1
 
 
 def can_merge_perf(perf1, perf2):
@@ -644,12 +787,19 @@ def compare_node_constraints(node1, node2):
 
 def get_merge_res_wrapper(node1, node2):
     global merge_res
+    global merged_tuples
     merge_res = 0
-    return get_merge_res(node1, node2)
+    merged_tuples.clear()
+    x = get_merge_res(node1, node2)
+    if(not x):  # Is this needed?
+        merged_tuples.clear()
+    return x
 
 
 def get_merge_res(node1, node2):
     global merge_res
+    global merged_tuples
+    merged_tuples.append((node1.name, node2.name))
     if((not compare_node_constraints(node1, node2)) or (len(node1.children) != len(node2.children))):
         return 0  # These trees can never be merged
     elif(node1.is_leaf):
@@ -775,8 +925,6 @@ def assign_tree_tags_and_perf(root):
 
         else:
             node.max_perf, node.min_perf = get_perf_variability(node)
-            node.merge_res = node.max_perf - node.min_perf
-            node.merge_type = "simple"
             assign_node_tags(node)
 
 

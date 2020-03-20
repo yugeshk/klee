@@ -6,6 +6,7 @@ KLEE_DIR=~/projects/Bolt/klee
 
 #Defaults
 EXPECTED_PERF=0
+RESOLUTION=0
 TRACES_DIR=klee-last
 CONSTRAINT_NODE=none
 
@@ -34,6 +35,8 @@ fi
 
 pushd $TRACES_DIR >> /dev/null
 
+rm -f tree*.dot
+
 grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{print $1 "," $2}' | sed 's/\.call_path//g' > tc_tags
 
 TREE_FILE="constraint-tree.txt"
@@ -49,4 +52,11 @@ done
 
 popd >> /dev/null
 
-dot $TRACES_DIR/tree.dot -T png -o tree.png
+rm -f tree*.png
+
+for DOT_FILE in $(ls $TRACES_DIR/tree-*.dot); do
+    TREE_FILE_NAME=${DOT_FILE/"dot"/"png"}
+    TREE_FILE_NAME=${TREE_FILE_NAME/$TRACES_DIR/""}
+    TREE_FILE_NAME=${TREE_FILE_NAME/"/"/""}
+    dot $DOT_FILE -T png -o $TREE_FILE_NAME
+done
