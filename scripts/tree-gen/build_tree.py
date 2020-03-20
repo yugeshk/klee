@@ -50,6 +50,8 @@ class MyNode(Constraint):
         self.sub_tests = []
         self.constraints = Constraint()
         self.is_true = -1
+        self.merge_res = float('inf')
+        self.merge_type = ""
 
     # TODO:Figure out why this is necessary.Code fails without it
     # Think it is required to override similar field in NodeMixin. Not sure.
@@ -79,6 +81,7 @@ all_tag_prefixes = list()
 perf_var = {}
 perf_formula_var = {}
 merged_tuples = list()
+merge_res = 0
 prefix_match_lengths = [[]]
 prefix_branch_constraints = [[[]]]
 constraint_thresholds = {}
@@ -126,6 +129,7 @@ def build_basic_tree(tree_file, tree_root):
 
 def process_res_tree():
     global tree_root
+    find_merge_resolutions(tree_root)
     coalesce_within_resolution(tree_root)
     tree_root = remove_spurious_branching(tree_root)
     tree_root = coalesce_constraints(tree_root)
@@ -416,87 +420,82 @@ def get_node_depth(node):
 
 
 def coalesce_constraints(root):
-    # This is an iterative process.
-    changed = 1
-    while(changed):
-        changed = 0
-        for node in PostOrderIter(root):
-            children = list(node.children)
-            if(not node.is_leaf and not node.is_root and len(children) == 2):
-                grandchildren_1 = list(children[0].children)
-                grandchildren_2 = list(children[1].children)
-                # Now constraint coalescing is possible
-                # Have to have atleast 3 grandchildren
-                if(len(grandchildren_1) + len(grandchildren_2) > 2):
-                    uncle = None
-                    dad = None
-                    nephew = None
-                    neice = None
+    for node in PostOrderIter(root):
+        children = list(node.children)
+        if(not node.is_leaf and not node.is_root and len(children) == 2):
+            grandchildren_1 = list(children[0].children)
+            grandchildren_2 = list(children[1].children)
+            # Now constraint coalescing is possible
+            # Have to have atleast 3 grandchildren
+            if(len(grandchildren_1) + len(grandchildren_2) > 2):
+                uncle = None
+                dad = None
+                nephew = None
+                neice = None
 
-                    # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
+                # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
 
-                    if(compare_trees_wrapper(children[0], grandchildren_2[0])):
-                        uncle = children[0]
-                        dad = children[1]
-                        nephew = grandchildren_2[0]
-                        if(len(grandchildren_2) > 1):
-                            neice = grandchildren_2[1]
-                    elif(compare_trees_wrapper(children[1], grandchildren_1[0])):
-                        uncle = children[1]
-                        dad = children[0]
-                        nephew = grandchildren_1[0]
-                        if(len(grandchildren_1) > 1):
-                            neice = grandchildren_1[1]
-                    elif(len(grandchildren_2) > 1 and compare_trees_wrapper(children[0], grandchildren_2[1])):
-                        uncle = children[0]
-                        dad = children[1]
-                        nephew = grandchildren_2[1]
-                        neice = grandchildren_2[0]
+                if(compare_trees_wrapper(children[0], grandchildren_2[0])):
+                    uncle = children[0]
+                    dad = children[1]
+                    nephew = grandchildren_2[0]
+                    if(len(grandchildren_2) > 1):
+                        neice = grandchildren_2[1]
+                elif(compare_trees_wrapper(children[1], grandchildren_1[0])):
+                    uncle = children[1]
+                    dad = children[0]
+                    nephew = grandchildren_1[0]
+                    if(len(grandchildren_1) > 1):
+                        neice = grandchildren_1[1]
+                elif(len(grandchildren_2) > 1 and compare_trees_wrapper(children[0], grandchildren_2[1])):
+                    uncle = children[0]
+                    dad = children[1]
+                    nephew = grandchildren_2[1]
+                    neice = grandchildren_2[0]
 
-                    elif(len(grandchildren_1) > 1 and compare_trees_wrapper(children[1], grandchildren_1[1])):
-                        uncle = children[1]
-                        dad = children[0]
-                        nephew = grandchildren_1[1]
-                        neice = grandchildren_1[0]
+                elif(len(grandchildren_1) > 1 and compare_trees_wrapper(children[1], grandchildren_1[1])):
+                    uncle = children[1]
+                    dad = children[0]
+                    nephew = grandchildren_1[1]
+                    neice = grandchildren_1[0]
 
-                    if(uncle != None):  # Merging the two nodes
-                        for pair in merged_tuples:
-                            # Sanity check that the tuple always has a node from uncle and then nephew.
-                            # Mostly redundant, but left here in any case
-                            assert(len(findall_by_attr(uncle, pair[0], name='name')) == 1
-                                   and len(findall_by_attr(nephew, pair[1], name='name')) == 1)
-                            final = findall_by_attr(
-                                uncle, pair[0], name='name')[0]
-                            merged_in = findall_by_attr(
-                                nephew, pair[1], name='name')[0]
-                            merge_nodes(final, merged_in)
+                if(uncle != None):  # Merging the two nodes
+                    for pair in merged_tuples:
+                        # Sanity check that the tuple always has a node from uncle and then nephew.
+                        # Mostly redundant, but left here in any case
+                        assert(len(findall_by_attr(uncle, pair[0], name='name')) == 1
+                               and len(findall_by_attr(nephew, pair[1], name='name')) == 1)
+                        final = findall_by_attr(
+                            uncle, pair[0], name='name')[0]
+                        merged_in = findall_by_attr(
+                            nephew, pair[1], name='name')[0]
+                        merge_nodes(final, merged_in)
 
-                        # Modify the constraints in the current node
-                        curr_subj = node.constraints.subject
-                        merged_in_subj = dad.constraints.subject
-                        uncle_ind = children.index(uncle)
-                        if(uncle.is_true):
-                            conjunction = "OR"
-                            new_sind = uncle_ind
-                        else:
-                            conjunction = "AND"
-                            new_sind = (uncle_ind+1) % 2
+                    # Modify the constraints in the current node
+                    curr_subj = node.constraints.subject
+                    merged_in_subj = dad.constraints.subject
+                    uncle_ind = children.index(uncle)
+                    if(uncle.is_true):
+                        conjunction = "OR"
+                        new_sind = uncle_ind
+                    else:
+                        conjunction = "AND"
+                        new_sind = (uncle_ind+1) % 2
 
-                        if((uncle.is_true + nephew.is_true) % 2 == 1):
-                            if(neice != None):
-                                neice.is_true = (neice.is_true+1) % 2
-                            merged_in_subj = "(Eq false " + merged_in_subj
-
-                        final_subj = "(" + curr_subj + " " + \
-                            conjunction + " " + merged_in_subj + ")"
-                        node.constraints = Constraint(final_subj, new_sind)
-
-                        # Fix the branching
-                        dad.parent = None
-                        nephew.parent = None
+                    if((uncle.is_true + nephew.is_true) % 2 == 1):
                         if(neice != None):
-                            neice.parent = node
-                        changed = 1
+                            neice.is_true = (neice.is_true+1) % 2
+                        merged_in_subj = "(Eq false " + merged_in_subj
+
+                    final_subj = "(" + curr_subj + " " + \
+                        conjunction + " " + merged_in_subj + ")"
+                    node.constraints = Constraint(final_subj, new_sind)
+
+                    # Fix the branching
+                    dad.parent = None
+                    nephew.parent = None
+                    if(neice != None):
+                        neice.parent = node
     return root
 
 
@@ -522,6 +521,71 @@ def remove_spurious_branching(root):
     return root
 
 
+def find_merge_resolutions(root):
+    for node in list(LevelOrderIter(root)):
+        assign_spurious_branching_res(node)
+        assign_constraint_coalescing_res(node)
+
+
+def assign_spurious_branching_res(node):
+    children = list(node.children)
+    if(node.parent != None and len(children) == 2 and (not children[0].is_leaf)):
+        res = get_merge_res_wrapper(children[0], children[1])
+        if(res > 0 and merge_res < node.merge_res):
+            node.merge_res = merge_res
+            node.merge_type = "spurious"
+
+
+# TODO: Duplicated code from coalesce_constraints
+def assign_constraint_coalescing_res(node):
+    children = list(node.children)
+    if(not node.is_leaf and not node.is_root and len(children) == 2):
+        grandchildren_1 = list(children[0].children)
+        grandchildren_2 = list(children[1].children)
+        # Now constraint coalescing is possible
+        # Have to have atleast 3 grandchildren
+        if(len(grandchildren_1) + len(grandchildren_2) > 2):
+            uncle = None
+            dad = None
+            nephew = None
+            neice = None
+
+            # If merging works, uncle == nephew. Hence, dad, nephew are lost and neice gets promoted.
+
+            if(get_merge_res_wrapper(children[0], grandchildren_2[0])):
+                uncle = children[0]
+                dad = children[1]
+                nephew = grandchildren_2[0]
+                if(len(grandchildren_2) > 1):
+                    neice = grandchildren_2[1]
+            elif(get_merge_res_wrapper(children[1], grandchildren_1[0])):
+                uncle = children[1]
+                dad = children[0]
+                nephew = grandchildren_1[0]
+                if(len(grandchildren_1) > 1):
+                    neice = grandchildren_1[1]
+            elif(len(grandchildren_2) > 1 and get_merge_res_wrapper(children[0], grandchildren_2[1])):
+                uncle = children[0]
+                dad = children[1]
+                nephew = grandchildren_2[1]
+                neice = grandchildren_2[0]
+
+            elif(len(grandchildren_1) > 1 and get_merge_res_wrapper(children[1], grandchildren_1[1])):
+                uncle = children[1]
+                dad = children[0]
+                nephew = grandchildren_1[1]
+                neice = grandchildren_1[0]
+
+            # Trying to assign the merge_threshold for dad and nephew, since these get thrown away.
+            if(uncle != None):
+                if(merge_res < dad.merge_res):
+                    dad.merge_res = merge_res
+                    dad.merge_type = "cc"
+                if(merge_res < nephew.merge_res):
+                    nephew.merge_res = merge_res
+                    nephew.merge_type = "cc"
+
+
 def merge_formulae(formulae):  # Assumes a set(no duplicates)
     final_formulae = set()
 
@@ -545,8 +609,12 @@ def merge_nodes(final, merged_in):
     final.min_perf = min(final.min_perf, merged_in.min_perf)
 
 
+def get_merging_res(perf1, perf2):
+    return (abs(perf2-perf1))
+
+
 def can_merge_perf(perf1, perf2):
-    return (abs(perf2-perf1) <= perf_resolution)
+    return abs(perf2-perf1) < perf_resolution
 
 
 def perf_within_envelope(perf):
@@ -572,8 +640,39 @@ def compare_node_constraints(node1, node2):
     return (node1.constraints.subject == node2.constraints.subject)
 
 
+# TODO:Duplicated code from compare_trees. Must refactor
+
+def get_merge_res_wrapper(node1, node2):
+    global merge_res
+    merge_res = 0
+    return get_merge_res(node1, node2)
+
+
+def get_merge_res(node1, node2):
+    global merge_res
+    if((not compare_node_constraints(node1, node2)) or (len(node1.children) != len(node2.children))):
+        return 0  # These trees can never be merged
+    elif(node1.is_leaf):
+        # Node2 is also a leaf node because of above check
+        if(tree_type == "neg-tree"):
+            assert(0 and "Not to be called from neg-tree")
+        else:
+            local_merge_res = get_merging_res(
+                max(node1.max_perf, node2.max_perf), min(node1.min_perf, node2.min_perf))
+            if(local_merge_res > merge_res):
+                merge_res = local_merge_res
+            return 1
+    else:  # Can have one child because coalescing is done later
+        if(len(node1.children) == 1):
+            if(not (node1.children[0].is_true == node2.children[0].is_true)):
+                return 0
+            return get_merge_res(node1.children[0], node2.children[0])
+        else:
+            # Both have two children
+            return(get_merge_res(node1.children[node1.constraints.sind], node2.children[node2.constraints.sind]) and get_merge_res(node1.children[(node1.constraints.sind + 1) % 2], node2.children[(node2.constraints.sind + 1) % 2]))
+
+
 def compare_trees_wrapper(node1, node2):
-    # To handle the recursion elegantly
     merged_tuples.clear()
     x = compare_trees(node1, node2)
     if(not x):
@@ -591,7 +690,8 @@ def compare_trees(node1, node2):
         if(tree_type == "neg-tree"):
             return 1
         else:
-            return can_merge_perf(max(node1.max_perf, node2.max_perf), min(node1.min_perf, node2.min_perf))
+            return can_merge_perf(max(node1.max_perf, node2.max_perf), min(
+                node1.min_perf, node2.min_perf))
     else:  # Can have one child because coalescing is done later
         if(len(node1.children) == 1):
             if(not (node1.children[0].is_true == node2.children[0].is_true)):
@@ -675,6 +775,8 @@ def assign_tree_tags_and_perf(root):
 
         else:
             node.max_perf, node.min_perf = get_perf_variability(node)
+            node.merge_res = node.max_perf - node.min_perf
+            node.merge_type = "simple"
             assign_node_tags(node)
 
 
@@ -717,8 +819,8 @@ def node_identifier_fn(node):
         # identifier += '\nFormula = %s' % (repr(node.formula))
 
     else:
-        identifier = '%s:%s:%s\n Perf Var = %s' % (
-            node.name, node.id, node.depth, (node.max_perf - node.min_perf))
+        identifier = '%s:%s:%s\n Merge_res = %d' % (
+            node.name, node.id, node.depth, node.merge_res)
 
     tag = str(node.tags)[1:-1]  # Removes the square brackets around the list
     tag = tag.replace(", ", "\n")
