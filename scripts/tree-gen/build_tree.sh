@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-KLEE_DIR=~/projects/Bolt/klee
+KLEE_DIR=$KLEE_INCLUDE/..
 
 #Defaults
 EXPECTED_PERF=0
