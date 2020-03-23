@@ -233,24 +233,39 @@ let call_recursively_on_term (f:term -> term option) tterm =
 
 let rec simplify_tterm tterm =
   (* printf "simplify_tterm %s\n" (render_tterm tterm); *)
-  call_recursively_on_term (function
-      | Bop (Add, {v=Int x;t=xt}, rhs) when x < 0 ->
-        Some (Bop (Sub, rhs, {v=Int (-x);t=xt}))
-      | Deref {t=_;v=Addr x} -> Some x.v
-      | Cast (t1, ({v=Cast(t2, _);t=_} as sub)) when t1 = t2 ->
-        Some (simplify_tterm sub).v
-      | Str_idx ({v=Struct (_,fields);
-                  t=_},
-                 fname) ->
-        let field =
-          List.find_exn fields ~f:(fun {name;value=_} ->
-              String.equal name fname)
-        in
-        Some field.value.v
-      | _ -> None) tterm
+  call_recursively_on_term (fun t ->
+      let simpl = function
+        | Bop (Add, {v=Int x;t=xt}, rhs) when x < 0 ->
+          Some (Bop (Sub, rhs, {v=Int (-x);t=xt}))
+        | Deref {t=_;v=Addr x} -> Some x.v
+        | Cast (t1, ({v=Cast(t2, _);t=_} as sub)) when t1 = t2 ->
+          Some (simplify_tterm sub).v (*FIXME: unnecessary*)
+        | Str_idx ({v=Struct (_,fields);
+                    t=_},
+                   fname) ->
+          let field =
+            List.find_exn fields ~f:(fun {name;value=_} ->
+                String.equal name fname)
+          in
+          Some field.value.v
+        | Bop (Eq, {v=Bool true;t=_}, rhs) -> Some rhs.v
+        | Bop (Eq, {v=Int 1;t=Boolean}, rhs) -> Some rhs.v
+        | Bop (Eq, {v=Bool false;t=_}, rhs) -> Some (Not rhs)
+        | Bop (Eq, {v=Int 0;t=Boolean}, rhs) -> Some (Not rhs)
+        | Not {v=Not x;t=_} -> Some x.v
+        | _ -> None
+      in
+      let rec fix t = match simpl t with
+        | Some x -> fix x
+        | None -> t
+      in
+      match simpl t with
+      | Some x -> Some (fix x)
+      | None -> None
+    ) tterm
 
 let rec replace_tterm old_tt new_tt tterm =
-  if tterm = old_tt then new_tt else 
+  if tterm = old_tt then new_tt else
   match tterm.v with
   | Bop (opa, lhs, rhs) ->
     {v=Bop (opa,
