@@ -27,8 +27,6 @@ type ttype = | Ptr of ttype
              | Uunknown
              | Unknown [@@deriving sexp]
 
-type term_util = Ptr_placeholder of int64 [@@deriving sexp]
-
 type term = Bop of bop*tterm*tterm
           | Apply of string*tterm list
           | Id of string
@@ -47,6 +45,9 @@ type term = Bop of bop*tterm*tterm
           | Utility of term_util [@@deriving sexp]
 and tterm = {v:term; t:ttype} [@@deriving sexp]
 and var_spec = {name: string; value:tterm} [@@deriving sexp]
+and term_util = Ptr_placeholder of int64
+              | Slice of tterm*int*int [@@deriving sexp]
+
 
 type eq_condition = {lhs: tterm; rhs: tterm} [@@deriving sexp]
 
@@ -98,15 +99,11 @@ let render_bop = function
   | Bit_and -> "&"
   | Bit_or -> "|"
 
-let render_utility = function
-  | Ptr_placeholder addr -> "?placeholder addr:" ^ (Int64.to_string addr)
-
 let int_type_postfix = function
   | Uint64 -> "ULL"
   | _ -> ""
 
 let rec render_tterm (t:tterm) =
-  let term_type = t.t in
   match t.v with
   | Bop (op, lhs, rhs) -> "(" ^ (render_tterm lhs) ^
                           " " ^ (render_bop op) ^ " " ^
@@ -154,10 +151,12 @@ let rec render_tterm (t:tterm) =
   | Utility util -> render_utility util
  (*TODO: reformulate this coupled definition*)
 and render_term t = render_tterm {v=t;t=Unknown}
+and render_utility = function
+  | Ptr_placeholder addr -> "?placeholder addr:" ^ (Int64.to_string addr)
+  | Slice (source, offset, width) -> (render_tterm source) ^ "[" ^
+                                     (string_of_int offset) ^ ":" ^
+                                     (string_of_int (offset + width)) ^ "]"
 
-let term_utility_eq a b =
-  match a, b with
-  | Ptr_placeholder x, Ptr_placeholder y -> (x = y)
 
 let rec term_eq a b =
   match a,b with
@@ -191,6 +190,12 @@ let rec term_eq a b =
   | Array cells_a, Array cells_b ->
     ((List.length cells_a) = (List.length cells_b)) &&
     (List.for_all2_exn cells_a cells_b ~f:(fun a b -> term_eq a.v b.v))
+  | _, _ -> false
+and term_utility_eq a b =
+  match a, b with
+  | Ptr_placeholder x, Ptr_placeholder y -> (x = y)
+  | Slice (s1, o1, w1), Slice (s2, o2, w2) -> (o1 = o2) && (w1 = w2) &&
+                                              (term_eq s1.v s2.v)
   | _, _ -> false
 
 let rec call_recursively_on_tterm (f:tterm -> tterm option) tterm =
@@ -397,6 +402,7 @@ let rec collect_nodes f tterm =
 let rec is_const term =
   let is_utility_const = function
     | Ptr_placeholder _ -> false
+    | Slice (source, _, _) -> is_const source.v
   in
   match term with
   | Bop (_,lhs,rhs) -> (is_constt lhs) && (is_constt rhs)

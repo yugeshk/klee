@@ -39,6 +39,8 @@ type guessed_types = {ret_type: ttype;
 
 let known_addresses : address_spec list Int64.Map.t ref = ref Int64.Map.empty
 
+let int_of_twidth = function
+    W1 -> 1 | W8 -> 8 | W16 -> 16 | W32 -> 32 | W64 -> 64
 
 let ttype_of_guess = function
   | {precise=Unknown;s=Tentative Sgn;w;}
@@ -242,13 +244,27 @@ let to_symbol str =
   in
   no_octotorps
 
-let get_var_name_of_sexp exp =
+let convert_str_to_width_confidence w =
+  if String.equal w "w1" then Sure W1
+  else if String.equal w "w8" then Sure W8
+  else if String.equal w "w16" then Sure W16
+  else if String.equal w "w32" then Sure W32
+  else if String.equal w "w64" then Sure W64
+  else Noidea
+
+let get_slice_of_sexp exp t =
   match exp with
-  | Sexp.List [Sexp.Atom rd; Sexp.Atom _; Sexp.List [Sexp.Atom _;
+  | Sexp.List [Sexp.Atom rd; Sexp.Atom w; Sexp.List [Sexp.Atom _;
                                                      Sexp.Atom pos];
                Sexp.Atom name]
     when ( String.equal rd "ReadLSB" ||
-           String.equal rd "Read") -> Some (to_symbol name ^ "_" ^ pos)
+           String.equal rd "Read") -> begin
+      match convert_str_to_width_confidence w with
+      | Sure w -> Some (Utility (Slice ({v=Id name;t},
+                                        int_of_string pos,
+                                        int_of_twidth w)))
+      | _ -> None
+    end
   | _ -> None
 
 let get_read_width_of_sexp exp =
@@ -274,14 +290,6 @@ let rec canonicalize_sexp sexp =
   | Sexp.List (Sexp.Atom f :: args) ->
     Sexp.List (Sexp.Atom f :: List.map args ~f:canonicalize_sexp)
   | _ -> sexp
-
-let convert_str_to_width_confidence w =
-  if String.equal w "w1" then Sure W1
-  else if String.equal w "w8" then Sure W8
-  else if String.equal w "w16" then Sure W16
-  else if String.equal w "w32" then Sure W32
-  else if String.equal w "w64" then Sure W64
-  else Noidea
 
 let is_bool_fun fname =
   if String.equal fname "Eq" then true
@@ -465,7 +473,7 @@ let rec get_sexp_value_raw exp ?(at=Beginning) t =
      ==>
      a || b *)
   | Sexp.List [Sexp.Atom "Eq"; Sexp.Atom "false";
-               Sexp.List [Sexp.Atom "Eq"; 
+               Sexp.List [Sexp.Atom "Eq";
                           Sexp.List [Sexp.Atom "w32"; Sexp.Atom "0"];
                           Sexp.List [Sexp.Atom "Or"; Sexp.Atom "w32";
                                      Sexp.List [Sexp.Atom "ZExt";
@@ -700,10 +708,9 @@ let rec get_sexp_value_raw exp ?(at=Beginning) t =
            get_sexp_value_raw value mt ~at,
            get_sexp_value_raw divisor mt ~at);t=mt}
   | _ ->
-    begin match get_var_name_of_sexp exp with
-      | Some name -> {v=Id name;t}
-      | None ->
-        make_cmplx_val exp t
+    begin match get_slice_of_sexp exp t with
+      | Some slice -> {v=slice;t}
+      | None -> make_cmplx_val exp t
     end
 
 let get_sexp_value exp ?(at=Beginning) t =
