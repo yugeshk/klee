@@ -1,7 +1,10 @@
 open Core
 open Ir
 
-type branch = {cond : tterm list; perf : int}
+type branch = {cond : term list; perf : int}
+
+type if_tree = Branch of term * if_tree * if_tree
+             | Leaf of int
 
 let do_log = false
 
@@ -717,21 +720,58 @@ let parse_branches file =
       | [cond_raw; perf_raw] ->
         let cond_str = Str.split (Str.regexp " *\*\*AND\*\* *") cond_raw in
         let perf = int_of_string perf_raw in
-        let cond = List.map cond_str ~f:parse_condition in
+        let cond = List.map cond_str ~f:(fun str -> (parse_condition str).v) in
         {cond;perf}
       | _ -> failwith (br ^ " is a malformed branch specification."))
   in
   branches
 
+let rec gen_if_tree branches cumul_cnd =
+  let find_agreeing_branches cnd =
+    List.filter ~f:(fun b -> List.exists b.cond ~f:(fun c -> term_eq c cnd))
+  in
+  match branches with
+  | hd :: tl -> begin
+    match List.find hd.cond ~f:(fun c ->
+        not (List.exists cumul_cnd (term_eq c)))
+    with
+    | Some pro ->
+      let contra = match pro with
+        | Not x -> x.v
+        | x -> Not {v=x; t=Boolean}
+      in
+      let then_branch = gen_if_tree
+          (hd::(find_agreeing_branches pro tl))
+          (pro::cumul_cnd)
+      in
+      let else_branch = gen_if_tree
+          (find_agreeing_branches contra tl)
+          (contra::cumul_cnd)
+      in
+      Branch (pro, then_branch, else_branch)
+    | None -> Leaf hd.perf
+    end
+  | [] -> Leaf (-1)
+
+let rec render_if_tree tree ident =
+  match tree with
+  | Branch (c, t, e) ->
+    ident ^ "if " ^ (render_term c) ^ ":\n" ^
+    (render_if_tree t (ident ^ "    ")) ^ "\n" ^
+    ident ^ "else:\n" ^
+    (render_if_tree e (ident ^ "    "))
+  | Leaf x -> ident ^ "return " ^ (string_of_int x)
+
 let gen_predictor branches =
-  String.concat ~sep:"\nelse "
-    (List.map branches ~f:(fun br ->
-         "if " ^ (String.concat ~sep: " and "
-                    (List.map br.cond ~f:(fun cnd ->
-                         "(" ^ (render_tterm cnd) ^ ")"))) ^
-         " : return " ^
-         (string_of_int br.perf)
-       )) ^ "\n"
+  render_if_tree (gen_if_tree branches []) ""
+  (* String.concat ~sep:"\nelse "
+   *   (List.map branches ~f:(fun br ->
+   *        "if " ^ (String.concat ~sep: " and "
+   *                   (List.map br.cond ~f:(fun cnd ->
+   *                        "(" ^ (render_tterm cnd) ^ ")"))) ^
+   *        " : return " ^
+   *        (string_of_int br.perf)
+   *      )) ^ "\n" *)
 
 
 let convert_constraints_to_predictor in_fname out_fname =
