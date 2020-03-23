@@ -80,44 +80,6 @@ let is_pointer_t (t: ttype) =
   | Ptr _ -> true
   | _ -> false
 
-type fun_call_context = {
-  extra_pre_conditions: eq_condition list;
-  pre_lemmas:string list;
-  application:term;
-  post_lemmas:string list;
-  ret_name:string option;
-  ret_type:ttype;
-  call_id:int;
-} [@@deriving sexp]
-
-type hist_call_result = {
-  args_post_conditions:eq_condition list;
-  ret_val:tterm;
-  post_statements:tterm list;
-} [@@deriving sexp]
-
-type hist_call = {
-  context:fun_call_context;
-  result:hist_call_result;
-} [@@deriving sexp]
-
-type tip_call = {context:fun_call_context;
-                 results:hist_call_result list} [@@deriving sexp]
-
-type ir = {
-  preamble:string;
-  free_vars:var_spec String.Map.t; (* TODO: var_spec -> typed_var *)
-  arguments:var_spec list; (*FIXME: holds also extra ptrs*)
-  cmplxs:var_spec String.Map.t;
-  context_assumptions:tterm list;
-  hist_calls:hist_call list;
-  tip_call:tip_call;
-  export_point:string;
-  finishing:bool;
-  complete_event_loop_iteration:bool;
-  semantic_checks:string;
-} [@@deriving sexp]
-
 let render_bop = function
   | Eq -> "=="
   | Le -> "<="
