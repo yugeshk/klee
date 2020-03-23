@@ -155,7 +155,7 @@ and render_utility = function
   | Ptr_placeholder addr -> "?placeholder addr:" ^ (Int64.to_string addr)
   | Slice (source, offset, width) -> (render_tterm source) ^ "[" ^
                                      (string_of_int offset) ^ ":" ^
-                                     (string_of_int (offset + width)) ^ "]"
+                                     (string_of_int (offset + width - 1)) ^ "]"
 
 
 let rec term_eq a b =
