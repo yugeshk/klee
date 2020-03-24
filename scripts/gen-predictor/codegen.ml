@@ -32,22 +32,21 @@ let rec gen_if_tree branches cumul_cnd =
     end
   | [] -> Leaf (-1)
 
-let rec render_if_tree tree ident =
+let rec render_if_tree tree ident debug =
   match tree with
   | Branch (c, t, e) ->
-    ident ^ "if " ^ (render_term c) ^ ":\n" ^
-    (render_if_tree t (ident ^ "    ")) ^ "\n" ^
+    let cond =
+      if debug
+      then Sexp.to_string (sexp_of_term c)
+      else render_term c
+    in
+    ident ^ "if " ^ cond ^ ":\n" ^
+    (render_if_tree t (ident ^ "    ") debug) ^ "\n" ^
     ident ^ "else:\n" ^
-    (render_if_tree e (ident ^ "    "))
+    (render_if_tree e (ident ^ "    ") debug)
   | Leaf x -> ident ^ "return " ^ (string_of_int x)
 
-let rewrite_cond = call_recursively_on_term (function
-    | Utility (Slice ({v=Id "user_buf";t=_}, 12, 16)) ->
-      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "ether");t=Unknown},
-                     "type"))
-    | Utility (Slice ({v=Id "buf_value";t=_}, 32, 32)) ->
-      Some (Str_idx ({v=Id "mbuf";t=Unknown}, "packet_type"))
-    | _ -> None)
+let rewrite_cond = call_recursively_on_term Domain.rewrite
 
 let rec rewrite_if_tree = function
   | Branch (c, t, e) ->
@@ -55,11 +54,10 @@ let rec rewrite_if_tree = function
             rewrite_if_tree t, rewrite_if_tree e)
   | Leaf x -> Leaf x
 
+let gen_predictor branches debug =
+  render_if_tree (rewrite_if_tree (gen_if_tree branches [])) "" debug
 
-let gen_predictor branches =
-  render_if_tree (rewrite_if_tree (gen_if_tree branches [])) ""
-
-let convert_constraints_to_predictor in_fname out_fname =
+let convert_constraints_to_predictor in_fname out_fname debug =
   match Sys.file_exists in_fname with
   | `No | `Unknown -> failwith ("Source constraints faile " ^ out_fname ^ "does not exist")
   | `Yes -> begin
@@ -68,11 +66,15 @@ let convert_constraints_to_predictor in_fname out_fname =
                      in_fname);
       let constraints = In_channel.read_all in_fname in
       let branches = Import.parse_branches constraints in
-      let predictor = gen_predictor branches in
+      let predictor = gen_predictor branches debug in
       Out_channel.write_all out_fname ~data:predictor
     end
 
 let () =
   let fname = Sys.argv.(1) in
+  let debug =
+    ((Array.length Sys.argv) = 3) &&
+    (String.equal Sys.argv.(2) "-debug")
+  in
   let out_fname = fname ^ ".py" in
-  convert_constraints_to_predictor fname out_fname
+  convert_constraints_to_predictor fname out_fname debug
