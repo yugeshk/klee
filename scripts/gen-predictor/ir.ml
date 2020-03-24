@@ -90,12 +90,12 @@ let render_bop = function
   | Add -> "+"
   | Sub -> "-"
   | Mul -> "*"
-  | Div -> "/"
+  | Div -> "//" (* represents floor division in Python*)
   | Modulo -> "%"
   | Shl -> "<<"
   | AShr -> ">>"
-  | And -> "&&"
-  | Or -> "||"
+  | And -> "and"
+  | Or -> "or"
   | Bit_and -> "&"
   | Bit_or -> "|"
 
@@ -128,7 +128,7 @@ let rec render_tterm (t:tterm) =
   | Not {v=Bop (Eq, lhs, rhs);t=_} -> "(" ^ (render_tterm lhs) ^
                                       " != " ^
                                       (render_tterm rhs) ^ ")"
-  | Not t -> "!(" ^ (render_tterm t) ^ ")"
+  | Not t -> "not (" ^ (render_tterm t) ^ ")"
   | Str_idx ({v=Id x;t=_}, field_name) -> x ^ "." ^ field_name
   | Str_idx ({v=Str_idx ({v=Id x;t=_}, fname1);t=_}, fname2) ->
     x ^ "." ^ fname1 ^ "." ^ fname2
