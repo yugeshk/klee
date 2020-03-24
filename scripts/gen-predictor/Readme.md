@@ -7,6 +7,8 @@ output of the bolt, provided in the form
 <branch-constraints>,<perf>
 ```
 
+## Running
+
 To generate the oracle, run:
 
 ```
@@ -15,7 +17,12 @@ bash generate.sh <constraints-file>
 
 The oracle will be written to `<constraints-file>.py`
 
-# Rewrite rules
+## Dependencies
+
+The tool is written in OCaml, using the Core library,
+as well as sexplib, str, and may be a few others.
+
+## Rewrite rules
 
 This codegenerator simplifies the resulting python code by applying
 user-defined domain-specific rewrite rules, listed in the function `rewrite`

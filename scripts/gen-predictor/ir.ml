@@ -140,7 +140,7 @@ let rec render_tterm (t:tterm) =
   | Str_idx ({v=Deref x;_},field_name) -> "(" ^ (render_tterm x) ^ ")->" ^
                                           field_name
   | Str_idx (t,field_name) -> "(" ^ (render_tterm t) ^ ")." ^ field_name
-  | Deref {v=Bop (Add, t, {v=Int idx;t=Uint32});t=Array term_type} ->
+  | Deref {v=Bop (Add, t, {v=Int idx;t=Uint32});t=Array _} ->
     "(" ^ (render_tterm t) ^ ")[" ^ (string_of_int idx) ^"]"
   | Deref t -> "*(" ^ (render_tterm t) ^ ")"
   | Fptr f -> f
