@@ -258,7 +258,7 @@ let get_slice_of_sexp exp t =
            String.equal rd "Read") -> begin
       match convert_str_to_width_confidence w with
       | Sure w -> Some (Utility (Slice ({v=Id name;t},
-                                        int_of_string pos,
+                                        8* (int_of_string pos), (* convert offset to bits, to match width *)
                                         int_of_twidth w)))
       | _ -> None
     end
