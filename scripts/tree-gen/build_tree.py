@@ -257,10 +257,10 @@ def merge_nodes_cc(root, res):
                 merged_in_subj = dad.constraints.subject
                 uncle_ind = list(grandad.children).index(uncle)
                 if(uncle.is_true):
-                    conjunction = "OR"
+                    conjunction = "Or"
                     new_sind = uncle_ind
                 else:
-                    conjunction = "AND"
+                    conjunction = "And"
                     new_sind = (uncle_ind+1) % 2
 
                 if((uncle.is_true + nephew.is_true) % 2 == 1):
@@ -268,8 +268,8 @@ def merge_nodes_cc(root, res):
                         neice.is_true = (neice.is_true+1) % 2
                     merged_in_subj = "(Eq false " + merged_in_subj
 
-                final_subj = "(" + curr_subj + " " + \
-                    conjunction + " " + merged_in_subj + ")"
+                final_subj = "(" + conjunction + " w32 " + \
+                    curr_subj + " " + merged_in_subj + ")"
                 grandad.constraints = Constraint(final_subj, new_sind)
 
                 # Fix the branching
@@ -600,10 +600,10 @@ def coalesce_constraints(root):
                     merged_in_subj = dad.constraints.subject
                     uncle_ind = children.index(uncle)
                     if(uncle.is_true):
-                        conjunction = "OR"
+                        conjunction = "Or"
                         new_sind = uncle_ind
                     else:
-                        conjunction = "AND"
+                        conjunction = "And"
                         new_sind = (uncle_ind+1) % 2
 
                     if((uncle.is_true + nephew.is_true) % 2 == 1):
@@ -611,8 +611,8 @@ def coalesce_constraints(root):
                             neice.is_true = (neice.is_true+1) % 2
                         merged_in_subj = "(Eq false " + merged_in_subj
 
-                    final_subj = "(" + curr_subj + " " + \
-                        conjunction + " " + merged_in_subj + ")"
+                    final_subj = "(" + conjunction + " w32 " + \
+                        curr_subj + " " + merged_in_subj + ")"
                     node.constraints = Constraint(final_subj, new_sind)
 
                     # Fix the branching
