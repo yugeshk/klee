@@ -7,6 +7,7 @@ import os
 import math
 import operator
 import subprocess
+import delegator
 
 # https://anytree.readthedocs.io/en/latest/index.html
 from anytree import NodeMixin, RenderTree, PostOrderIter, LevelOrderIter
@@ -341,17 +342,11 @@ def basic_cleanup_tree(root):
                 curr_parent.parent = None
 
 
-def pretty_print_tree(root):
-    if(tree_type == "neg-tree"):
-        pretty_print_neg_tree(root)
-    else:
-        pretty_print_res_tree(root)
-
-
 def pretty_print_neg_tree(root):
     global branch_pcv_violations
     global loop_pcv_violations
     # Now we put together branch PCV violations in a user-friendly format
+    file_name = "neg-tree-%d.txt" % (perf_resolution)
     for node in PostOrderIter(tree_root):
         if(node.is_leaf):
             node.formula = merge_formulae(node.formula)
@@ -372,8 +367,9 @@ def pretty_print_neg_tree(root):
                     branch_pcv_violations[f] = temp
 
     for formula, node_list in branch_pcv_violations.items():
-
-        print("\n*** Violating Formula(e) *** \n %s" % (formula))
+        f = open(file_name, "a+")
+        f.write("\n*** Violating Formula(e) *** \n %s\n" % (formula))
+        f.close()
         trees_for_formula = {}
         for depth, nodes in node_list.items():
             paths = []
@@ -383,18 +379,20 @@ def pretty_print_neg_tree(root):
 
             depth_root = build_path_tree(paths)
             trees_for_formula[depth] = depth_root
-            print_tree(depth_root)
+            print_tree(depth_root, file_name)
 
     # Printing loop PCV violations
     if(len(loop_pcv_violations)):
-        print("\n*** Violating Formula(e) *** \n")
+        f = open(file_name, "a+")
+        f.write("\n*** Violating Formula(e) *** \n\n")
         for formula in loop_pcv_violations:
-            print(formula)
-        print("Cause(s) of violation\n%s" % (loop_pcv_root_cause))
+            f.write(formula+"\n")
+        f.write("Cause(s) of violation\n%s" % (loop_pcv_root_cause))
+        f.close()
 
 
 def pretty_print_res_tree(root):
-    print("\n\n ** Tree at resolution %d **\n" % (perf_resolution))
+    file_name = "res-tree-%d" % (perf_resolution)
     nodes_by_depth = {}
     for node in PostOrderIter(tree_root):
         if(node.is_leaf):
@@ -410,7 +408,7 @@ def pretty_print_res_tree(root):
             node_path = get_node_path(node, root)
             paths.append((node, node_path))
         depth_root = build_path_tree(paths)
-        print_tree(depth_root)
+        print_tree(depth_root, file_name)
 
 
 def build_path_tree(paths_list):
@@ -488,43 +486,45 @@ def get_node_path(node_name, root):
     return constraint_path
 
 
-def print_neg_tree(root):
-    leaves = [node for node in list(LevelOrderIter(root)) if node.is_leaf]
-    for leaf in leaves:
-        s = ""
-        leaf_path = get_node_path(leaf.name, root)
-        s = "Cause(s) of violation:" + "\n"
-        for c in leaf_path:
-            if(c.sind):
-                prefix = "(Eq true "
-            else:
-                prefix = "(Eq false "
-            s = s + prefix + c.subject + ") **AND** "
-        s = s[0: (len(s)-len(" **AND** "))]  # Remove last and
-        print(s)
+def print_neg_tree(root, op_file):
+    with open("op_file", "a+") as op:
+        leaves = [node for node in list(LevelOrderIter(root)) if node.is_leaf]
+        for leaf in leaves:
+            s = ""
+            leaf_path = get_node_path(leaf.name, root)
+            s = "Cause(s) of violation:" + "\n"
+            for c in leaf_path:
+                if(c.sind):
+                    prefix = "(Eq true "
+                else:
+                    prefix = "(Eq false "
+                s = s + prefix + c.subject + ") **AND** "
+            s = s[0: (len(s)-len(" **AND** "))]  # Remove last and
+            op.write(s+"\n")
 
 
-def print_res_tree(root):
-    leaves = [node for node in list(LevelOrderIter(root)) if node.is_leaf]
-    for leaf in leaves:
-        s = ""
-        leaf_path = get_node_path(leaf.name, root)
-        for c in leaf_path:
-            if(c.sind):
-                prefix = "(Eq true "
-            else:
-                prefix = "(Eq false "
-            s = s + prefix + c.subject + ") **AND** "
-        s = s[0: (len(s)-len(" **AND** "))]  # Remove last and
-        s = s+"," + "%d" % (int((leaf.max_perf + leaf.min_perf)/2))
-        print(s)
+def print_res_tree(root, op_file):
+    with open(op_file, "a+") as op:
+        leaves = [node for node in list(LevelOrderIter(root)) if node.is_leaf]
+        for leaf in leaves:
+            s = ""
+            leaf_path = get_node_path(leaf.name, root)
+            for c in leaf_path:
+                if(c.sind):
+                    prefix = "(Eq true "
+                else:
+                    prefix = "(Eq false "
+                s = s + prefix + c.subject + ") **AND** "
+            s = s[0: (len(s)-len(" **AND** "))]  # Remove last and
+            s = s+"," + "%d" % (int((leaf.max_perf + leaf.min_perf)/2))
+            op.write(s+"\n")
 
 
-def print_tree(root):
+def print_tree(root, op_file):
     if(tree_type == "neg_tree"):
-        print_neg_tree(root)
+        print_neg_tree(root, op_file)
     else:
-        print_res_tree(root)
+        print_res_tree(root, op_file)
 
 
 def get_node_depth(node):

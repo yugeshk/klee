@@ -35,7 +35,11 @@ fi
 
 pushd $TRACES_DIR >> /dev/null
 
-rm -f tree*.dot
+pushd ../ >> /dev/null
+  rm -f res-tree*
+popd >> /dev/null
+
+rm -f tree*.dot 
 
 grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{print $1 "," $2}' | sed 's/\.call_path//g' > tc_tags
 
@@ -50,6 +54,8 @@ do
   python3 $KLEE_DIR/scripts/tree-gen/build_tree.py tc_tags combined_perf.txt perf-formula.txt "$METRIC" $TREE_TYPE $TREE_FILE $CONSTRAINT_FILE $EXPECTED_PERF $RESOLUTION $CONSTRAINT_NODE
 done
 
+mv res-tree* ../
+
 popd >> /dev/null
 
 rm -f tree*.png
@@ -59,4 +65,8 @@ for DOT_FILE in $(ls $TRACES_DIR/tree-*.dot); do
     TREE_FILE_NAME=${TREE_FILE_NAME/$TRACES_DIR/""}
     TREE_FILE_NAME=${TREE_FILE_NAME/"/"/""}
     dot $DOT_FILE -T png -o $TREE_FILE_NAME
+done
+
+for RES_TREE_FILE in $(ls $TRACES_DIR/../res-tree*); do
+    bash $KLEE_DIR/scripts/gen-predictor/generate.sh $RES_TREE_FILE >> /dev/null
 done
