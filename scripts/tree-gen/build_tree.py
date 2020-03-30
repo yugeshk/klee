@@ -393,22 +393,14 @@ def pretty_print_neg_tree(root):
 
 def pretty_print_res_tree(root):
     file_name = "res-tree-%d" % (perf_resolution)
-    nodes_by_depth = {}
-    for node in PostOrderIter(tree_root):
-        if(node.is_leaf):
-            node.depth = get_node_depth(node)  # Reusing depth
-            if(node.depth in nodes_by_depth):
-                nodes_by_depth[node.depth].add(node.name)
-            else:
-                nodes_by_depth[node.depth] = {node.name}
-
-    for depth, nodes in nodes_by_depth.items():
-        paths = []
-        for node in nodes:
-            node_path = get_node_path(node, root)
-            paths.append((node, node_path))
-        depth_root = build_path_tree(paths)
-        print_tree(depth_root, file_name)
+    nodes = list(node.name for node in PostOrderIter(
+        tree_root) if node.is_leaf)
+    paths = list()
+    for node in nodes:
+        node_path = get_node_path(node, root)
+        paths.append((node, node_path))
+    depth_root = build_path_tree(paths)
+    print_tree(depth_root, file_name)
 
 
 def build_path_tree(paths_list):
