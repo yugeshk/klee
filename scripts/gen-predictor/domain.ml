@@ -1,7 +1,6 @@
 open Core
 open Ir
 
-
 let rewrite_rules : (term -> term option) list =
   [(function (* Stage #1 rewriting *)
       (* user_buf[12:27] -> pkt.ether.type *)
@@ -13,6 +12,30 @@ let rewrite_rules : (term -> term option) list =
         Some (Str_idx ({v=Id "mbuf";t=Unknown}, "packet_type"))
       | _ -> None);
    (function (* Stage #2 rewriting *)
-     | Bop (Eq, {v=Int i; t}, x) -> Some (Bop (Eq, x, {v=Int i; t}))
-     | _ -> None);
+      (* 0 == x -> x == 0 *)
+      | Bop (Eq, {v=Int i; t}, x) -> Some (Bop (Eq, x, {v=Int i; t}))
+      | _ -> None);
+   (function (* Stage #3 rewriting *)
+      (* pkt.is_IP *)
+      | Bop (Or, 
+            {v=Bop(Eq,
+                    {v=Bop(Bit_and,{v=Str_idx({v = Id "pkt"; t = Unknown}, "type"); t = Uint32}, {v = Int 16; t = Uint32});t = Uint32},
+                    {v = Int 16;t = Uint32});t = Boolean},
+            {v = Bop(And,
+                    {v = Bop(Eq, {v = Str_idx({v = Id "pkt"; t = Unknown}, "type"); t = Uint32},{v = Int 0; t = Uint32});t = Boolean},
+                    {v = Bop(Eq, {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "ether"); t = Unknown}, "type"); t= Sint16},{v = Int 8; t = Sint16}); t = Boolean}); t = Boolean})
+        -> Some (Str_idx({v = Id "pkt"; t = Unknown}, "is_IP"))
+
+      (* pkt.is_TCP *)
+      | Bop(Eq,
+            {v = Str_idx({v = Id "pkt"; t = Unknown},"protocol"); t = Sint8},
+            {v = Int 6; t = Sint8})
+        -> Some (Str_idx({v = Id "pkt"; t = Unknown}, "is_TCP"))
+
+      (* pkt.is_UDP *)
+      | Bop(Eq,
+            {v = Str_idx({v = Id "pkt"; t = Unknown},"protocol"); t = Sint8},
+            {v = Int 17; t = Sint8})
+        -> Some (Str_idx({v = Id "pkt"; t = Unknown}, "is_UDP"))
+      | _ -> None);
   ]
