@@ -23,6 +23,8 @@ let rewrite_rules : (term -> term option) list =
       | Utility (Slice ({v = Id var ;t=_}, 0, _)) -> Some (Id var)
       (* Int == x -> x == Int *)
       | Bop (Eq, {v=Int i; t}, x) -> Some (Bop (Eq, x, {v=Int i; t}))
+      (* Int < x -> x > Int *)
+      | Bop (Lt, {v=Int i; t}, x) -> Some (Bop (Gt, x, {v=Int i; t}))
       | _ -> None);
 
     (function (* Stage #3 rewriting *)
