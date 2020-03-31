@@ -62,7 +62,7 @@ class KTest:
                 name = f.read(size)
                 size, = struct.unpack('>i', f.read(4))
                 bytes = f.read(size)
-                mask_size = (size + 31)/32*4
+                mask_size = int((size + 31)/32*4)
                 mask = f.read(mask_size)
                 havocs.append( (name,bytes,mask) )
         # Create an instance
