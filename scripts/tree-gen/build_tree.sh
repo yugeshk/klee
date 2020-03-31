@@ -41,7 +41,11 @@ popd >> /dev/null
 
 rm -f tree*.dot 
 
-grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{print $1 "," $2}' | sed 's/\.call_path//g' > tc_tags
+if grep -q "TRAFFIC_CLASS" *.call_path; then
+  grep "TRAFFIC_CLASS" *.call_path | awk -F: '{print $1 "," $2}' | awk -F' = ' '{print $1 "," $2}' | sed 's/\.call_path//g' > tc_tags
+fi
+
+touch tc_tags
 
 TREE_FILE="constraint-tree.txt"
 CONSTRAINT_FILE="constraint-branches.txt"
