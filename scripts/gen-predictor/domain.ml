@@ -16,6 +16,9 @@ let rewrite_rules : (term -> term option) list =
       (* user_buf[23:24] -> pkt.protocol *)
       | Utility (Slice ({v=Id "user_buf";t=_}, 184, 8)) ->
       Some (Str_idx ({v=Id "pkt";t=Unknown}, "protocol"))
+      (* user_buf[14:15] -> pkt.version_ihl *)
+      | Utility (Slice ({v=Id "user_buf";t=_}, 112, 8)) ->
+            Some (Str_idx ({v=Id "pkt";t=Unknown}, "version_ihl"))
       | _ -> None);
 
    (function (* Stage #2 rewriting *)
@@ -37,18 +40,21 @@ let rewrite_rules : (term -> term option) list =
       | Not ({v = Not x; t=_})-> Some (x.v)
       | _ -> None);
     
-
    (function (* Stage #5 rewriting *)
       (* pkt.is_IP *)
-      | Bop (Or, 
-            {v=Bop(Eq,
-                    {v=Bop(Bit_and,{v=Str_idx({v = Id "pkt"; t = Unknown}, "type"); t = Uint32}, {v = Int 16; t = Uint32});t = Uint32},
-                    {v = Int 16;t = Uint32});t = Boolean},
-            {v = Bop(And,
-                    {v = (Not {v = Str_idx({v = Id "pkt"; t = Unknown}, "type"); t = Uint32});t = Boolean},
-                    {v = Bop(Eq, {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "ether"); t = Unknown}, "type"); t= Sint16},{v = Int 8; t = Sint16}); t = Boolean}); t = Boolean})
+      | Bop(Eq, 
+            {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "ether"); t = Unknown}, "type"); t= Sint16},
+            {v = Int 8; t = Sint16})
         -> Some (Str_idx({v = Id "pkt"; t = Unknown}, "is_IP"))
-
+      
+      (* pkt.has_IP_options *)
+      | Bop(Gt,
+            {v = Bop(Bit_and, 
+                      {v = Str_idx({v = Id "pkt"; t = Unknown}, "version_ihl"); t= Uint32},{v = Int 15; t = Uint32});
+            t = Uint32},
+            {v = Int 5; t = Sint32})
+        -> Some (Str_idx({v = Id "pkt"; t = Unknown}, "has_IP_options"))
+    
       (* pkt.is_TCP *)
       | Bop(Eq,
             {v = Str_idx({v = Id "pkt"; t = Unknown},"protocol"); t = Sint8},
