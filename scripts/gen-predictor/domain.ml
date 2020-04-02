@@ -15,10 +15,35 @@ let rewrite_rules : (term -> term option) list =
         Some (Str_idx ({v=Id "pkt";t=Unknown}, "type"))
       (* user_buf[23:24] -> pkt.protocol *)
       | Utility (Slice ({v=Id "user_buf";t=_}, 184, 8)) ->
-      Some (Str_idx ({v=Id "pkt";t=Unknown}, "protocol"))
+        Some (Str_idx ({v=Id "pkt";t=Unknown}, "protocol"))
       (* user_buf[14:15] -> pkt.version_ihl *)
       | Utility (Slice ({v=Id "user_buf";t=_}, 112, 8)) ->
-            Some (Str_idx ({v=Id "pkt";t=Unknown}, "version_ihl"))
+        Some (Str_idx ({v=Id "pkt";t=Unknown}, "version_ihl"))
+      (* Src and dest MAC addresses *)
+      | Utility (Slice({v = Id "user_buf"; t = _},0,8)) ->
+        Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"a"))
+      | Utility (Slice({v = Id "user_buf"; t = _},8,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"b"))
+      | Utility (Slice({v = Id "user_buf"; t = _},16,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"c"))
+      | Utility (Slice({v = Id "user_buf"; t = _},24,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"d"))
+      | Utility (Slice({v = Id "user_buf"; t = _},32,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"e"))
+      | Utility (Slice({v = Id "user_buf"; t = _},40,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"f"))
+      | Utility (Slice({v = Id "user_buf"; t = _},48,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "dst_mac");t=Unknown},"a"))
+      | Utility (Slice({v = Id "user_buf"; t = _},56,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "dst_mac");t=Unknown},"b"))
+      | Utility (Slice({v = Id "user_buf"; t = _},64,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "dst_mac");t=Unknown},"c"))
+      | Utility (Slice({v = Id "user_buf"; t = _},72,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "dst_mac");t=Unknown},"d"))
+      | Utility (Slice({v = Id "user_buf"; t = _},80,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "dst_mac");t=Unknown},"e"))
+      | Utility (Slice({v = Id "user_buf"; t = _},88,8)) ->
+      Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "dst_mac");t=Unknown},"f"))
       | _ -> None);
 
    (function (* Stage #2 rewriting *)
@@ -66,5 +91,51 @@ let rewrite_rules : (term -> term option) list =
             {v = Str_idx({v = Id "pkt"; t = Unknown},"protocol"); t = Sint8},
             {v = Int 17; t = Sint8})
         -> Some (Str_idx({v = Id "pkt"; t = Unknown}, "is_UDP"))
+
+      (* pkt.src_mac == pkt.dst_mac *)
+      | Bop (And, 
+                {v = Not { v = Bop(Sub,
+                                    {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown}, "a"); t= Uint32},
+                                    {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}, "a"); t= Uint32}); 
+                           t = Uint32};
+                 t = Boolean},
+                { v = Bop(And,
+                          {v = Bop(And,
+                                    {v = Bop(And,
+                                              {v = Bop(And,
+                                                        {v = Not { v = Bop(Sub,
+                                                                            {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown}, "b"); t= Uint32},
+                                                                            {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}, "b"); t= Uint32}); 
+                                                                  t = Uint32};
+                                                        t = Boolean},
+                                                        {v = Not { v = Bop(Sub,
+                                                                            {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown}, "c"); t= Uint32},
+                                                                            {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}, "c"); t= Uint32}); 
+                                                                  t = Uint32};
+                                                        t = Boolean});
+                                              t = Boolean},
+                                              {v = Not { v = Bop(Sub,
+                                                                  {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown}, "d"); t= Uint32},
+                                                                  {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}, "d"); t= Uint32}); 
+                                                        t = Uint32};
+                                              t = Boolean});
+                                    t = Boolean},
+                                    {v = Not { v = Bop(Sub,
+                                                        {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown}, "e"); t= Uint32},
+                                                        {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}, "e"); t= Uint32}); 
+                                              t = Uint32};
+                                    t = Boolean});
+                          t = Boolean},
+                          {v = Not { v = Bop(Sub,
+                                              {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown}, "f"); t= Uint32},
+                                              {v = Str_idx({v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}, "f"); t= Uint32}); 
+                                    t = Uint32};
+                          t = Boolean});
+                t = Boolean}) 
+        -> Some ( Bop (Eq, 
+                        {v = Str_idx({v = Id "pkt"; t = Unknown}, "src_mac"); t = Unknown},
+                        {v = Str_idx({v = Id "pkt"; t = Unknown}, "dst_mac"); t = Unknown}))
       | _ -> None);
+
+
   ]
