@@ -265,13 +265,18 @@ class ConstraintTree {
   /* Poorly named, it only stores meta information for the tree */
   std::map<int, ConstraintManager> seen_tests;
   std::map<std::pair<int, int>, int> overlap_depth;
-  std::map<std::pair<int, int>, std::vector<ref<Expr>>> branch;
-
   /* Key is a pair of test-cases. Value is the depth at which they diverge and
    * the constraint on which they diverge */
-
+  std::map<std::pair<int, int>, std::vector<ref<Expr>>> branch;
+  klee::Solver *solver; /* This should be a global variable */
 public:
-  ConstraintTree() : seen_tests(), overlap_depth(), branch(){};
+  ConstraintTree() : seen_tests(), overlap_depth(), branch() {
+    solver = klee::createCoreSolver(klee::Z3_SOLVER);
+    assert(solver);
+    solver = createCexCachingSolver(solver);
+    solver = createCachingSolver(solver);
+    solver = createIndependentSolver(solver);
+  };
   void addTest(int id, ExecutionState state);
   void dumpConstraintTree(llvm::raw_ostream *tree_file,
                           llvm::raw_ostream *constraints_file);
@@ -1503,14 +1508,7 @@ void CallTree::dumpCallPrefixesSExpr(std::list<CallInfo> accumulated_prefix,
 
 void ConstraintTree::addTest(int id, ExecutionState state) {
 
-  klee::Solver *solver = klee::createCoreSolver(klee::Z3_SOLVER);
-  assert(solver);
-  solver = createCexCachingSolver(solver);
-  solver = createCachingSolver(solver);
-  solver = createIndependentSolver(solver);
-
   for (auto it : seen_tests) {
-
     std::pair<int, int> test_pair = std::minmax(id, it.first);
 
     /* Iterating through constraints of existing test */
