@@ -123,6 +123,18 @@ namespace klee {
     /// \return A writeable ObjectState (\a os or a copy).
     ObjectState *getWriteable(const MemoryObject *mo, const ObjectState *os);
 
+
+    /// \brief Set the accessible flag in the ObjectState.
+    ///
+    /// The function is essentially just getWriteable(..)->allowAccess();
+    /// See getWriteable
+    ///
+    /// \param mo The MemoryObject to allow access to an ObjectState for.
+    /// \param os The current (inaccessible) ObjectState binding for the
+    ///           MemoryObject.
+    /// \return An accessible and writeable ObjectState (\a os or a copy).
+    ObjectState *allowAccess(const MemoryObject *mo, const ObjectState *os);
+
     /// Copy the concrete values of all managed ObjectStates into the
     /// actual system memory location they were allocated at.
     void copyOutConcretes();

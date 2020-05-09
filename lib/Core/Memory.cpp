@@ -67,6 +67,9 @@ int MemoryObject::counter = 0;
 MemoryObject::~MemoryObject() {
   if (parent)
     parent->markFreed(this);
+  id = 0xdead;
+  refCount = 0xdead;
+  address = 0xdead;
 }
 
 void MemoryObject::getAllocInfo(std::string &result) const {
@@ -103,7 +106,8 @@ ObjectState::ObjectState(const MemoryObject *mo)
     knownSymbolics(0),
     updates(0, 0),
     size(mo->size),
-    readOnly(false) {
+    readOnly(false),
+    accessible(true) {
   mo->refCount++;
   if (!UseConstantArrays) {
     static unsigned id = 0;
@@ -125,7 +129,8 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     knownSymbolics(0),
     updates(array, 0),
     size(mo->size),
-    readOnly(false) {
+    readOnly(false),
+    accessible(true) {
   mo->refCount++;
   makeSymbolic();
   memset(concreteStore, 0, size);
@@ -141,7 +146,9 @@ ObjectState::ObjectState(const ObjectState &os)
     knownSymbolics(0),
     updates(os.updates),
     size(os.size),
-    readOnly(false) {
+    readOnly(false),
+    accessible(os.accessible),
+    inaccessible_message(os.inaccessible_message) {
   assert(!os.readOnly && "no need to copy read only object?");
   if (object)
     object->refCount++;
@@ -156,9 +163,10 @@ ObjectState::ObjectState(const ObjectState &os)
 }
 
 ObjectState::~ObjectState() {
-  delete concreteMask;
-  delete flushMask;
-  delete[] knownSymbolics;
+  assert(refCount == 0);
+  if (concreteMask) delete concreteMask;
+  if (flushMask) delete flushMask;
+  if (knownSymbolics) delete[] knownSymbolics;
   delete[] concreteStore;
 
   if (object)
@@ -247,9 +255,9 @@ void ObjectState::flushToConcreteStore(TimingSolver *solver,
 }
 
 void ObjectState::makeConcrete() {
-  delete concreteMask;
-  delete flushMask;
-  delete[] knownSymbolics;
+  if (concreteMask) delete concreteMask;
+  if (flushMask) delete flushMask;
+  if (knownSymbolics) delete[] knownSymbolics;
   concreteMask = 0;
   flushMask = 0;
   knownSymbolics = 0;
@@ -267,12 +275,79 @@ void ObjectState::makeSymbolic() {
   }
 }
 
+const Array *ObjectState::forgetAll() {
+  assert(accessible);
+  static unsigned id = 0;
+  //assert(size != 0); //TODO: why size can ever be 0?
+  if (size == 0) return NULL;
+  // llvm::errs() << " forgetting ["
+  //              << object->isGlobal
+  //              << object->isLocal
+  //              << object->isFixed
+  //              << object->fake_object
+  //              << object->isUserSpecified << "]:";
+  const Array *array =
+    getArrayCache()->CreateArray("reset_" + object->name + "_" + llvm::utostr(++id),
+                                 size);
+  UpdateList ul(array, 0);
+  for (unsigned i=0; i<size; i++) {
+    ref<Expr> tmp = read8(i);
+    // if (isa<ConstantExpr>(tmp)) {
+    //   llvm::errs() << tmp <<"("
+    //                <<(char)(dyn_cast<ConstantExpr>(tmp))->getZExtValue()
+    //                <<"), ";
+    // } else
+    //   llvm::errs() << tmp <<", ";
+    markByteSymbolic(i);
+    ref<Expr> read = ReadExpr::create(ul, ConstantExpr::alloc(i, Expr::Int32));
+    setKnownSymbolic(i, read.get());
+  }
+  if (flushMask) delete flushMask;
+  flushMask = 0;
+  // llvm::errs() << "\n";
+  return array;
+}
+
+const Array *ObjectState::forgetThese(const BitArray *bytesToForget) {
+  assert(accessible);
+  static unsigned id = 0;
+  //assert(size != 0); //TODO: why size can ever be 0?
+  if (size == 0) return NULL;
+  const Array *array =
+    getArrayCache()->CreateArray("reset_" + object->name + "_" + llvm::utostr(++id),
+                                 size);
+  UpdateList ul(array, 0);
+  for (unsigned i=0; i<size; i++) {
+    if (bytesToForget->get(i)) {
+      markByteSymbolic(i);
+      ref<Expr> read = ReadExpr::create(ul, ConstantExpr::alloc(i, Expr::Int32));
+      setKnownSymbolic(i, read.get());
+      markByteUnflushed(i);
+    }
+  }
+  // llvm::errs() << "\n";
+  return array;
+}
+
+void ObjectState::forbidAccess(const llvm::Twine& msg) {
+  assert(accessible);
+  accessible = false;
+  inaccessible_message = msg.str();
+}
+
+void ObjectState::forbidAccessWithLastMessage() {
+  assert(accessible);
+  accessible = false;
+}
+
 void ObjectState::initializeToZero() {
+  assert(accessible);
   makeConcrete();
   memset(concreteStore, 0, size);
 }
 
 void ObjectState::initializeToRandom() {  
+  assert(accessible);
   makeConcrete();
   for (unsigned i=0; i<size; i++) {
     // randomly selected by 256 sided die
@@ -395,17 +470,19 @@ void ObjectState::setKnownSymbolic(unsigned offset,
 
 /***/
 
-ref<Expr> ObjectState::read8(unsigned offset) const {
+ref<Expr> ObjectState::read8(unsigned offset,
+                             bool circumventInaccessibility) const {
+  assert(circumventInaccessibility || accessible);
   if (isByteConcrete(offset)) {
     return ConstantExpr::create(concreteStore[offset], Expr::Int8);
   } else if (isByteKnownSymbolic(offset)) {
     return knownSymbolics[offset];
   } else {
     assert(isByteFlushed(offset) && "unflushed byte without cache value");
-    
-    return ReadExpr::create(getUpdates(), 
+
+    return ReadExpr::create(getUpdates(),
                             ConstantExpr::create(offset, Expr::Int32));
-  }    
+  }
 }
 
 ref<Expr> ObjectState::read8(ref<Expr> offset) const {
@@ -426,6 +503,7 @@ ref<Expr> ObjectState::read8(ref<Expr> offset) const {
 }
 
 void ObjectState::write8(unsigned offset, uint8_t value) {
+  assert(accessible);
   //assert(read_only == false && "writing to read-only object!");
   concreteStore[offset] = value;
   setKnownSymbolic(offset, 0);
@@ -447,6 +525,7 @@ void ObjectState::write8(unsigned offset, ref<Expr> value) {
 }
 
 void ObjectState::write8(ref<Expr> offset, ref<Expr> value) {
+  assert(accessible);
   assert(!isa<ConstantExpr>(offset) && "constant offset passed to symbolic write8");
   unsigned base, size;
   fastRangeCheckOffset(offset, &base, &size);
@@ -465,13 +544,15 @@ void ObjectState::write8(ref<Expr> offset, ref<Expr> value) {
 
 /***/
 
-ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width) const {
+ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width,
+                            bool circumventInaccessibility) const {
+  assert(circumventInaccessibility || accessible);
   // Truncate offset to 32-bits.
   offset = ZExtExpr::create(offset, Expr::Int32);
 
   // Check for reads at constant offsets.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(offset))
-    return read(CE->getZExtValue(32), width);
+    return read(CE->getZExtValue(32), width, circumventInaccessibility);
 
   // Treat bool specially, it is the only non-byte sized write we allow.
   if (width == Expr::Bool)
@@ -492,10 +573,13 @@ ref<Expr> ObjectState::read(ref<Expr> offset, Expr::Width width) const {
   return Res;
 }
 
-ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
+ref<Expr> ObjectState::read(unsigned offset, Expr::Width width,
+                            bool circumventInaccessibility) const {
+  assert(circumventInaccessibility || accessible);
   // Treat bool specially, it is the only non-byte sized write we allow.
   if (width == Expr::Bool)
-    return ExtractExpr::create(read8(offset), 0, Expr::Bool);
+    return ExtractExpr::create(read8(offset, circumventInaccessibility),
+                               0, Expr::Bool);
 
   // Otherwise, follow the slow general case.
   unsigned NumBytes = width / 8;
@@ -503,7 +587,7 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   ref<Expr> Res(0);
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    ref<Expr> Byte = read8(offset + idx);
+    ref<Expr> Byte = read8(offset + idx, circumventInaccessibility);
     Res = i ? ConcatExpr::create(Byte, Res) : Byte;
   }
 
@@ -511,6 +595,7 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
 }
 
 void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
+  assert(accessible);
   // Truncate offset to 32-bits.
   offset = ZExtExpr::create(offset, Expr::Int32);
 
@@ -538,6 +623,7 @@ void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
 }
 
 void ObjectState::write(unsigned offset, ref<Expr> value) {
+  assert(accessible);
   // Check for writes of constant values.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     Expr::Width w = CE->getWidth();
@@ -571,6 +657,7 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
 } 
 
 void ObjectState::write16(unsigned offset, uint16_t value) {
+  assert(accessible);
   unsigned NumBytes = 2;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
@@ -579,6 +666,7 @@ void ObjectState::write16(unsigned offset, uint16_t value) {
 }
 
 void ObjectState::write32(unsigned offset, uint32_t value) {
+  assert(accessible);
   unsigned NumBytes = 4;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
@@ -587,6 +675,7 @@ void ObjectState::write32(unsigned offset, uint32_t value) {
 }
 
 void ObjectState::write64(unsigned offset, uint64_t value) {
+  assert(accessible);
   unsigned NumBytes = 8;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
@@ -606,7 +695,7 @@ void ObjectState::print() const {
                << " concrete? " << isByteConcrete(i)
                << " known-sym? " << isByteKnownSymbolic(i)
                << " flushed? " << isByteFlushed(i) << " = ";
-    ref<Expr> e = read8(i);
+    ref<Expr> e = read8(i, true);
     llvm::errs() << e << "\n";
   }
 

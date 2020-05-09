@@ -1,0 +1,6 @@
+PRJ codegen
+
+S .
+B _build
+
+PKG core

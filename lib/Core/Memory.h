@@ -172,6 +172,9 @@ public:
 
   bool readOnly;
 
+  bool accessible;
+  std::string inaccessible_message;
+
 public:
   /// Create a new object state for the given memory object with concrete
   /// contents. The initial contents are undefined, it is the callers
@@ -189,14 +192,22 @@ public:
 
   void setReadOnly(bool ro) { readOnly = ro; }
 
+  bool isAccessible() const { return accessible; }
+  void forbidAccess(const llvm::Twine &msg);
+  void forbidAccessWithLastMessage();
+  void allowAccess() { assert(!accessible); accessible = true; }
+
   // make contents all concrete and zero
   void initializeToZero();
   // make contents all concrete and random
   void initializeToRandom();
 
-  ref<Expr> read(ref<Expr> offset, Expr::Width width) const;
-  ref<Expr> read(unsigned offset, Expr::Width width) const;
-  ref<Expr> read8(unsigned offset) const;
+  ref<Expr> read(ref<Expr> offset, Expr::Width width,
+                 bool circumventInaccessibility = false) const;
+  ref<Expr> read(unsigned offset, Expr::Width width,
+                 bool circumventInaccessibility = false) const;
+  ref<Expr> read8(unsigned offset,
+                  bool circumventInaccessibility = false) const;
 
   // return bytes written.
   void write(unsigned offset, ref<Expr> value);
@@ -214,6 +225,9 @@ public:
   */
   void flushToConcreteStore(TimingSolver *solver,
                             const ExecutionState &state) const;
+
+  const Array *forgetThese(const BitArray *bytesToForget);
+  const Array *forgetAll();
 
 private:
   const UpdateList &getUpdates() const;
@@ -243,7 +257,7 @@ private:
 
   ArrayCache *getArrayCache() const;
 };
-  
+
 } // End klee namespace
 
 #endif

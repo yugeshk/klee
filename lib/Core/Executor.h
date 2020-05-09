@@ -115,7 +115,8 @@ public:
     ReadOnly,
     ReportError,
     User,
-    Unhandled
+    Inaccessible,
+    Unhandled,
   };
 
 private:
@@ -236,6 +237,8 @@ private:
 
   /// Optimizes expressions
   ExprOptimizer optimizer;
+  void addState(ExecutionState *current,
+                ExecutionState *fresh);
 
   llvm::Function* getTargetFunction(llvm::Value *calledVal,
                                     ExecutionState &state);
@@ -253,15 +256,18 @@ private:
                                   unsigned size, bool isReadOnly);
 
   void initializeGlobalObject(ExecutionState &state, ObjectState *os, 
-			      const llvm::Constant *c,
-			      unsigned offset);
+                              const llvm::Constant *c,
+                              unsigned offset);
   void initializeGlobals(ExecutionState &state);
 
   void stepInstruction(ExecutionState &state);
   void updateStates(ExecutionState *current);
+  void handleLoopAnalysis(llvm::BasicBlock *dst,
+                          llvm::BasicBlock *src,
+                          ExecutionState &state);
   void transferToBasicBlock(llvm::BasicBlock *dst, 
-			    llvm::BasicBlock *src,
-			    ExecutionState &state);
+                            llvm::BasicBlock *src,
+                            ExecutionState &state);
 
   void callExternalFunction(ExecutionState &state,
                             KInstruction *target,
@@ -326,7 +332,7 @@ private:
                    KInstruction *ki,
                    llvm::Function *f,
                    std::vector< ref<Expr> > &arguments);
-                   
+
   // do address resolution / object binding / out of bounds checking
   // and perform the operation
   void executeMemoryOperation(ExecutionState &state,
@@ -337,6 +343,9 @@ private:
 
   void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);
+
+  void executePossiblyHavoc(ExecutionState &state, const MemoryObject *mo,
+                            const std::string &name);
 
   /// Create a new state where each input condition has been added as
   /// a constraint and return the results. The input state is included
@@ -535,7 +544,7 @@ public:
 
   bool getSymbolicSolution(
       const ExecutionState &state,
-      std::vector<std::pair<std::string, std::vector<unsigned char>>> &res)
+      std::vector<std::pair<std::string, std::vector<unsigned char>>> &res, std::vector<HavocedLocation> &havocs)
       override;
 
   void getCoveredLines(const ExecutionState &state,
@@ -548,7 +557,14 @@ public:
   /// Returns the errno location in memory of the state
   int *getErrnoLocation(const ExecutionState &state) const;
 };
-  
-} // End klee namespace
+
+void FillCallInfoOutput(llvm::Function* f,
+                        bool isVoidReturn,
+                        ref<Expr> result,
+                        const ExecutionState& state,
+                        const Executor& exec,
+                        CallInfo* info);
+
+}// End klee namespace
 
 #endif

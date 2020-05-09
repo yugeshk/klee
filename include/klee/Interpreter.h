@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include "klee/util/BitArray.h"
+
 struct KTest;
 
 namespace llvm {
@@ -45,6 +47,13 @@ public:
   virtual void processTestCase(const ExecutionState &state,
                                const char *err,
                                const char *suffix) = 0;
+  virtual void processCallPath(const ExecutionState &state) = 0;
+};
+
+struct HavocedLocation {
+  std::string name;
+  std::vector<unsigned char> value;
+  BitArray mask;
 };
 
 class Interpreter {
@@ -80,8 +89,13 @@ public:
     /// symbolic execution on concrete programs.
     unsigned MakeConcreteSymbolic;
 
+    /// Whether to forgive user the existence of memory locations
+    /// that alter their value during the loop invariant analysis.
+    bool CondoneUndeclaredHavocs;
+
     InterpreterOptions()
-      : MakeConcreteSymbolic(false)
+      : MakeConcreteSymbolic(false),
+        CondoneUndeclaredHavocs(false)
     {}
   };
 
@@ -156,7 +170,8 @@ public:
                                    std::vector<
                                    std::pair<std::string,
                                    std::vector<unsigned char> > >
-                                   &res) = 0;
+                                   &res,
+                                   std::vector<HavocedLocation> &havocs) = 0;
 
   virtual void getCoveredLines(const ExecutionState &state,
                                std::map<const std::string*, std::set<unsigned> > &res) = 0;

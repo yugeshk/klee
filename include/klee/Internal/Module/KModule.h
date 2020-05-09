@@ -12,6 +12,10 @@
 
 #include "klee/Config/Version.h"
 #include "klee/Interpreter.h"
+#include "klee/LoopAnalysis.h"
+
+//TODO: generalize for otehr LLVM versions like the above
+#include <llvm/Analysis/LoopInfo.h>
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -38,6 +42,8 @@ namespace klee {
   struct KInstruction;
   class KModule;
   template<class T> class ref;
+  class ExecutionState;
+  class TimingSolver;
 
   struct KFunction {
     llvm::Function *function;
@@ -49,9 +55,21 @@ namespace klee {
 
     std::map<llvm::BasicBlock*, unsigned> basicBlockEntry;
 
+    /// Loop information is automatically calculated on initialization
+    typedef llvm::LoopInfoBase<llvm::BasicBlock, llvm::Loop> LInfo;
+    LInfo loopInfo;
+
     /// Whether instructions in this function should count as
     /// "coverable" for statistics and search heuristics.
     bool trackCoverage;
+
+  private:
+    /// Keep track of the loops that were analysed on the subject of
+    /// the invariants. Map these loops to the most general (i.e. the smallest)
+    /// set of invariants.
+    /// Owns the StateByteMask values.
+    std::map<const llvm::Loop*,
+             LoopEntryState*> analysedLoops;
 
   public:
     explicit KFunction(llvm::Function*, KModule *);
@@ -61,6 +79,12 @@ namespace klee {
     ~KFunction();
 
     unsigned getArgRegister(unsigned index) { return index; }
+
+    bool insert(const llvm::Loop *loop,
+                const StateByteMask& forgetMask,
+                const ExecutionState& state);
+    LoopEntryState* analysedStateFor(const llvm::Loop *loop);
+    void clearAnalysedLoops();
   };
 
 
@@ -147,6 +171,8 @@ namespace klee {
     /// Run passes that check if module is valid LLVM IR and if invariants
     /// expected by KLEE's Executor hold.
     void checkModule();
+    /// Clear out the records for the analyzed loops in all the functions.
+    void clearAnalysedLoops();
   };
 } // End klee namespace
 

@@ -16,8 +16,7 @@ import string
 import struct
 import sys
 
-version_no = 3
-
+version_no=4
 
 class KTestError(Exception):
     pass
@@ -62,17 +61,29 @@ class KTest:
             bytes = f.read(size)
             objects.append((name, bytes))
 
+        havocs = []
+        if version >= 4:
+            numHavocs, = struct.unpack('>i', f.read(4))
+            for i in range(numHavocs):
+                size, = struct.unpack('>i', f.read(4))
+                name = f.read(size)
+                size, = struct.unpack('>i', f.read(4))
+                bytes = f.read(size)
+                mask_size = int((size + 31)/32*4)
+                mask = f.read(mask_size)
+                havocs.append( (name,bytes,mask) )
         # Create an instance
-        b = KTest(version, path, args, symArgvs, symArgvLen, objects)
+        b = KTest(version, path, args, symArgvs, symArgvLen, objects,havocs)
         return b
 
-    def __init__(self, version, path, args, symArgvs, symArgvLen, objects):
+    def __init__(self, version, path, args, symArgvs, symArgvLen, objects,havocs):
         self.version = version
         self.path = path
         self.symArgvs = symArgvs
         self.symArgvLen = symArgvLen
         self.args = args
         self.objects = objects
+        self.havocs = havocs
 
     def __format__(self, format_spec):
         sio = io.StringIO()
@@ -93,10 +104,16 @@ class KTest:
         fmt['hex' ] = "object {0:" + width + "d}: hex : 0x{1}"
         fmt['text'] = "object {0:" + width + "d}: text: {1}"
 
+        fmt['havoc_name' ] = "havoc {0:" + width + "d}: name: '{1}'"
+        fmt['havoc_size' ] = "havoc {0:" + width + "d}: size: {1}"
+        fmt['havoc_mask' ] = "havoc {0:" + width + "d}: mask : {1}"
+        fmt['havoc_int'  ] = "havoc {0:" + width + "d}: int : {1}"
+        fmt['havoc_uint' ] = "havoc {0:" + width + "d}: uint: {1}"
+        
+        def p(key, arg): print(fmt[key].format(i, arg), file=sio)
+
         # print objects
         for i, (name, data) in enumerate(self.objects):
-            def p(key, arg): print(fmt[key].format(i, arg), file=sio)
-
             blob = data.rstrip(b'\x00') if format_spec.endswith('trimzeros') else data
             txt = ''.join(c if c in self.valid_chars else '.' for c in blob.decode('ascii', errors='replace').replace('�', '.'))
             size = len(data)
@@ -112,6 +129,19 @@ class KTest:
                     break
             p('text', txt)
 
+        # print havocs
+        for i,(name, data, mask) in enumerate(self.havocs):
+            blob = data.rstrip(b'\x00') if format_spec.endswith('trimzeros') else data
+            size = len(data)
+            p('havoc_name',name)
+            p('havoc_size',size)
+            p('havoc_mask',mask)
+            for n, m in [(1, 'b'), (2, 'h'), (4, 'i'), (8, 'q')]:
+                if size == n:
+                    p('havoc_int', struct.unpack(m, data)[0])
+                    p('havoc_uint', struct.unpack(m.upper(), data)[0])
+                    break
+                
         return sio.getvalue()
 
     def extract(self, object_names, trim_zeros):

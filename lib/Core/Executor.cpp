@@ -76,7 +76,11 @@
 #include "llvm/IR/CallSite.h"
 #endif
 
-#include <algorithm>
+
+//TODO: generalize for other LLVM versions like the above
+#include <llvm/Analysis/LoopInfo.h>
+#include <llvm/Analysis/Dominators.h>
+
 #include <cassert>
 #include <cerrno>
 #include <cxxabi.h>
@@ -404,6 +408,14 @@ cl::opt<bool> DebugCheckForImpliedValues(
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
 
+cl::opt<bool>
+  DebugReportSymbdex("debug-report-symbdex", cl::init(false),
+  cl::desc("print stack trace for each symbolic "
+          "indexing occurence (symbdex may "
+          "considerably slow down symbolic "
+          "execution)"),
+  cl::cat(DebugCat));
+
 } // namespace
 
 namespace klee {
@@ -423,6 +435,7 @@ const char *Executor::TerminateReasonNames[] = {
   [ ReadOnly ] = "readonly",
   [ ReportError ] = "reporterror",
   [ User ] = "user",
+  [ Inaccessible ] = "inaccessible",
   [ Unhandled ] = "xxx",
 };
 
@@ -1525,6 +1538,28 @@ void Executor::executeCall(ExecutionState &state,
   }
 }
 
+void Executor::addState(ExecutionState *current,
+                        ExecutionState *fresh) {
+  current->ptreeNode->data = 0;
+  std::pair<PTree::Node*, PTree::Node*> res =
+    processTree->split(current->ptreeNode, current, fresh);
+  current->ptreeNode = res.first;
+  fresh->ptreeNode = res.second;
+  addedStates.push_back(fresh);
+}
+
+void Executor::handleLoopAnalysis(BasicBlock *dst, BasicBlock *src,
+                                  ExecutionState &state) {
+  bool terminate = false;
+  state.updateLoopAnalysisForBlockTransfer(dst, src,
+                                           solver,
+                                           &terminate);
+  if (terminate) {
+    LOG_LA("Terminating state after loop analysis update.");
+    terminateState(state);
+  }
+}
+
 void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src, 
                                     ExecutionState &state) {
   // Note that in general phi nodes can reuse phi values from the same
@@ -1547,6 +1582,8 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
     PHINode *first = static_cast<PHINode*>(state.pc->inst);
     state.incomingBBIndex = first->getBasicBlockIndex(src);
   }
+
+  handleLoopAnalysis(dst, src, state);
 }
 
 /// Compute the true target of a function call, resolving LLVM and KLEE aliases
@@ -1615,6 +1652,121 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
   }
 }
 
+void dumpFields(std::map<int, klee::FieldDescr>* fields, size_t base,
+                const klee::ExecutionState& state) {
+  std::map<int, klee::FieldDescr>::iterator i = fields->begin(),
+    e = fields->end();
+  for (; i != e; ++i) {
+    int offset = i->first;
+    ref<klee::ConstantExpr> addrExpr =
+      klee::ConstantExpr::alloc(base + offset,
+                                sizeof(size_t)*8);
+    if (i->second.doTraceValueOut)
+      i->second.outVal = state.readMemoryChunk(addrExpr, i->second.width,
+                                               true);
+    if (i->second.addr == 0)
+      i->second.addr = base + offset;
+    else {
+      assert(i->second.addr == base + offset &&
+             "field address can not change during the execution.");
+    }
+    dumpFields(&i->second.fields, base + offset, state);
+  }
+}
+
+void klee::FillCallInfoOutput(Function* f,
+                              bool isVoidReturn,
+                              ref<Expr> result,
+                              const ExecutionState& state,
+                              const Executor& exec,
+                              CallInfo* info) {
+  llvm::Type *retType =
+    (dyn_cast<FunctionType>(cast<PointerType>(f->getType())->
+                            getElementType()))->
+    getReturnType();
+
+  assert(info->returned == false);
+  if (!isVoidReturn) {
+    info->ret.expr = result;
+    info->ret.isPtr = retType->isPointerTy();
+    if (info->ret.isPtr && info->ret.pointee.doTraceValueOut) {
+      llvm::Type *elementType = (cast<PointerType>(retType))->
+        getElementType();
+      assert(isa<klee::ConstantExpr>(result) &&
+             "No support for symbolic pointer return values.");
+      ref<klee::ConstantExpr> address = cast<klee::ConstantExpr>(result);
+      if (elementType->isFunctionTy()) {
+        uint64_t addr = address->getZExtValue();
+        info->ret.funPtr = (Function*) addr;
+      } else {
+        if (info->ret.pointee.width == 0) {
+          info->ret.pointee.width = exec.getWidthForLLVMType(elementType);
+        }
+        info->ret.pointee.outVal = state.readMemoryChunk(address,
+                                                         info->ret.pointee.width,
+                                                         true);
+        info->ret.funPtr = NULL;
+        size_t base = address->getZExtValue();
+        dumpFields(&info->ret.pointee.fields, base, state);
+      }
+    }
+    if (retType->isStructTy()) {
+      llvm::StructType *retS = cast<llvm::StructType>(retType);
+      assert(retS->getNumElements() == 2);
+      llvm::Type* ptrType = retS->getElementType(0);
+      llvm::Type* sizeType = retS->getElementType(1);
+      assert(ptrType->isPointerTy());
+      assert(sizeType->isIntegerTy());
+      assert(isa<klee::ConstantExpr>(result));
+      ref<klee::ConstantExpr> rez = cast<klee::ConstantExpr>(result);
+      ref<klee::ConstantExpr> rezP =
+        cast<klee::ConstantExpr>(ExtractExpr::create
+                                 (rez, 0, exec.getWidthForLLVMType(ptrType)));
+      ref<klee::ConstantExpr> rezS =
+        cast<klee::ConstantExpr>(ExtractExpr::create
+                                 (rez, exec.getWidthForLLVMType(ptrType),
+                                  exec.getWidthForLLVMType(sizeType)) );
+      Expr::Width width = 8*rezS->getZExtValue();
+      info->ret.isPtr = true;
+      info->ret.pointee.outVal = state.readMemoryChunk(rezP, width, true);
+      info->ret.funPtr = NULL;
+      info->ret.expr = rezP;
+    }
+  }
+
+  int numParams = info->args.size();
+  for (int i = 0; i < numParams; ++i) {
+    CallArg *arg = &info->args[i];
+    if (arg->isPtr && arg->pointee.doTraceValueOut
+        && arg->funPtr == NULL) {
+      arg->pointee.outVal =
+        state.readMemoryChunk(arg->expr,
+                              arg->pointee.width,
+                              true);
+      size_t base = (cast<ConstantExpr>(arg->expr))->getZExtValue();
+      dumpFields(&arg->pointee.fields, base, state);
+    }
+  }
+  std::map<size_t, CallExtraPtr>::iterator i = info->extraPtrs.begin(),
+    e = info->extraPtrs.end();
+  for (; i != e; ++i) {
+    CallExtraPtr *extraPtr = &i->second;
+    size_t addr = i->first;
+    extraPtr->accessibleOut &=
+      state.isAccessibleAddr(ConstantExpr::alloc(addr, 8*sizeof(size_t)));
+    extraPtr->pointee.outVal =
+      state.constraints.simplifyExpr
+      (state.readMemoryChunk(ConstantExpr::alloc(addr, 8*sizeof(size_t)),
+                             extraPtr->pointee.width,
+                             true));
+    dumpFields(&extraPtr->pointee.fields, addr, state);
+  }
+
+  info->returned = true;
+
+  state.recordRetConstraints(info);
+}
+
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
@@ -1625,11 +1777,16 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Instruction *caller = kcaller ? kcaller->inst : 0;
     bool isVoidReturn = (ri->getNumOperands() == 0);
     ref<Expr> result = ConstantExpr::alloc(0, Expr::Bool);
-    
+
     if (!isVoidReturn) {
       result = eval(ki, 0, state).value;
     }
-    
+
+    Function* f = ri->getParent()->getParent();
+    if (!state.callPath.empty() && f == state.callPath.back().f) {
+      CallInfo *info = &state.callPath.back();
+      FillCallInfoOutput(f, isVoidReturn, result, state, *this, info);
+    }
     if (state.stack.size() <= 1) {
       assert(!caller && "caller set on initial stack frame");
       terminateStateOnExit(state);
@@ -1654,15 +1811,20 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           Expr::Width to = getWidthForLLVMType(t);
             
           if (from != to) {
-            CallSite cs = (isa<InvokeInst>(caller) ? CallSite(cast<InvokeInst>(caller)) : 
-                           CallSite(cast<CallInst>(caller)));
+            bool isSExt = true;
+            if (isa<InvokeInst>(caller) || isa<CallInst>(caller)) {
+              CallSite cs = (isa<InvokeInst>(caller) ? CallSite(cast<InvokeInst>(caller)) : 
+                             CallSite(cast<CallInst>(caller)));
 
             // XXX need to check other param attrs ?
 #if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-            bool isSExt = cs.hasRetAttr(llvm::Attribute::SExt);
+            isSExt = cs.hasRetAttr(llvm::Attribute::SExt);
 #else
-            bool isSExt = cs.paramHasAttr(0, llvm::Attribute::SExt);
+            isSExt = cs.paramHasAttr(0, llvm::Attribute::SExt);
 #endif
+            }
+
+
             if (isSExt) {
               result = SExtExpr::create(result, to);
             } else {
@@ -1703,10 +1865,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (statsTracker && state.stack.back().kf->trackCoverage)
         statsTracker->markBranchVisited(branches.first, branches.second);
 
-      if (branches.first)
+      if (branches.first) {
         transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), *branches.first);
-      if (branches.second)
+      }
+      if (branches.second) {
         transferToBasicBlock(bi->getSuccessor(1), bi->getParent(), *branches.second);
+      }
     }
     break;
   }
@@ -2024,8 +2188,33 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     break;
   }
   case Instruction::PHI: {
-    ref<Expr> result = eval(ki, state.incomingBBIndex, state).value;
-    bindLocal(ki, state, result);
+    if ((!state.loopInProcess.isNull() ||
+        (!state.analysedLoops.empty() &&
+         state.analysedLoops.count(state.stack.back().kf->loopInfo.getLoopFor
+                                   (ki->inst->getParent())))) &&
+        state.stack.back().kf->loopInfo.isLoopHeader
+        (ki->inst->getParent())) {
+      // Warning: untested!
+      // TODO: make sure all the PHIs are actually lifted in the loop header,
+      // and not left somewhere in the middle of the loop.
+      LOG_LA("Making PHI symbolic");
+      Expr::Width w = getWidthForLLVMType(ki->inst->getType());
+      static unsigned genId = 0;
+      const Array *array =
+        arrayCache.CreateArray("PHI_reset" + llvm::utostr(++genId),
+                               (w+7)/8);
+      UpdateList ul(array, 0);
+      // TODO: how do you specify width here?
+      ref<Expr> result = ReadExpr::create(ul, ConstantExpr::alloc(0, Expr::Int32));
+      bindLocal(ki, state, result);
+    } else {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 0)
+      ref<Expr> result = eval(ki, state.incomingBBIndex, state).value;
+#else
+      ref<Expr> result = eval(ki, state.incomingBBIndex * 2, state).value;
+#endif
+      bindLocal(ki, state, result);
+    }
     break;
   }
 
@@ -2263,7 +2452,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-    executeMemoryOperation(state, true, base, value, 0);
+    executeMemoryOperation(state, true, base, value, ki);
     break;
   }
 
@@ -3070,7 +3259,17 @@ void Executor::terminateState(ExecutionState &state) {
                       "replay did not consume all objects in test input.");
   }
 
-  interpreterHandler->incPathsExplored();
+  if (state.loopInProcess.isNull()) {
+    if (state.doTrace) {
+      interpreterHandler->processCallPath(state);
+    }
+    interpreterHandler->incPathsExplored();
+  }
+
+  ExecutionState *replacement = 0;
+  state.terminateState(&replacement);
+  assert(replacement != &state);
+  if (replacement) addState(&state, replacement);
 
   std::vector<ExecutionState *>::iterator it =
       std::find(addedStates.begin(), addedStates.end(), &state);
@@ -3204,7 +3403,8 @@ void Executor::terminateStateOnError(ExecutionState &state,
 
     interpreterHandler->processTestCase(state, msg.str().c_str(), suffix);
   }
-    
+  state.doTrace = false;
+
   terminateState(state);
 
   if (shouldExitOn(termReason))
@@ -3212,10 +3412,7 @@ void Executor::terminateStateOnError(ExecutionState &state,
 }
 
 // XXX shoot me
-static const char *okExternalsList[] = { "printf", 
-                                         "fprintf", 
-                                         "puts",
-                                         "getpid" };
+static const char *okExternalsList[] = { /* Nothing! */ };
 static std::set<std::string> okExternals(okExternalsList,
                                          okExternalsList + 
                                          (sizeof(okExternalsList)/sizeof(okExternalsList[0])));
@@ -3343,7 +3540,7 @@ void Executor::callExternalFunction(ExecutionState &state,
   }
 }
 
-/***/
+ /***/
 
 ref<Expr> Executor::replaceReadWithSymbolic(ExecutionState &state, 
                                             ref<Expr> e) {
@@ -3570,7 +3767,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
-                                      KInstruction *target /* undef if write */) {
+                                      KInstruction *target) {
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -3580,6 +3777,15 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       address = state.constraints.simplifyExpr(address);
     if (isWrite && !isa<ConstantExpr>(value))
       value = state.constraints.simplifyExpr(value);
+  }
+
+  if (DebugReportSymbdex) {
+    if (!isa<ConstantExpr>(address)) {
+      printf("\n");
+      printf("Some symbolic indexing going on here:\n");
+      state.pc->printFileLine(llvm::errs());
+      state.dumpStack(llvm::errs());
+    }
   }
 
   address = optimizer.optimizeExpr(address, true);
@@ -3615,28 +3821,78 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       return;
     }
 
+    // check if the operation is intercepted
+    if (isWrite) {
+      std::string interceptWriter = state.getInterceptWriter(mo->address);
+      if (interceptWriter != "") {
+        GlobalValue *gv = kmodule->module->getNamedValue(interceptWriter);
+        if (!gv) {
+          klee_error("Function %s(), interceptor, not found!\n", interceptWriter.c_str());
+        }
+        Function* interceptFunc;
+        if (!(interceptFunc = dyn_cast<Function>(gv))) {
+          klee_error("Interceptor is not a function\n");
+        }
+        std::vector<ref<Expr>> interceptArgs;
+        interceptArgs.push_back(/* address */ ConstantExpr::alloc(mo->address, 64));
+        interceptArgs.push_back(/* offset */ ZExtExpr::create(offset, 32));
+        interceptArgs.push_back(/* size */ ConstantExpr::alloc(bytes, 32));
+        interceptArgs.push_back(/* value */ ZExtExpr::create(value, 64));
+        executeCall(state, target, interceptFunc, interceptArgs);
+        return;
+      }
+    } else {
+      std::string interceptReader = state.getInterceptReader(mo->address);
+      if (interceptReader != "") {
+        GlobalValue *gv = kmodule->module->getNamedValue(interceptReader);
+        if (!gv) {
+          klee_error("Function %s(), interceptor, not found!\n", interceptReader.c_str());
+        }
+        Function* interceptFunc;
+        if (!(interceptFunc = dyn_cast<Function>(gv))) {
+          klee_error("Interceptor is not a function\n");
+        }
+        std::vector<ref<Expr>> interceptArgs;
+        interceptArgs.push_back(/* address */ ConstantExpr::alloc(mo->address, 64));
+        interceptArgs.push_back(/* offset */ ZExtExpr::create(offset, 32));
+        interceptArgs.push_back(/* size */ ConstantExpr::alloc(bytes, 32));
+        executeCall(state, target, interceptFunc, interceptArgs);
+        return;
+      }
+    }
+
+
     if (inBounds) {
       const ObjectState *os = op.second;
-      if (isWrite) {
-        if (os->readOnly) {
-          terminateStateOnError(state, "memory error: object read only",
-                                ReadOnly);
+      if (os->isAccessible()) {
+        if (isWrite) {
+          if (os->readOnly) {
+            terminateStateOnError(state,
+                                  "memory error: object read only",
+                                  User);
+          } else {
+            ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+            wos->write(offset, value);
+          }
         } else {
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          wos->write(offset, value);
-        }          
+          ref<Expr> result = os->read(offset, type);
+
+          if (interpreterOpts.MakeConcreteSymbolic)
+            result = replaceReadWithSymbolic(state, result);
+
+          bindLocal(target, state, result);
+        }
       } else {
-        ref<Expr> result = os->read(offset, type);
-        
-        if (interpreterOpts.MakeConcreteSymbolic)
-          result = replaceReadWithSymbolic(state, result);
-        
-        bindLocal(target, state, result);
+        std::stringstream msg;
+        msg << "memory error: object inaccessible. ";
+        msg << "It is rendered inaccessible because: ";
+        msg << os->inaccessible_message;
+        terminateStateOnError(state, msg.str(), Inaccessible);
       }
 
       return;
     }
-  } 
+  }
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
@@ -3661,18 +3917,33 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
     // bound can be 0 on failure or overlapped 
     if (bound) {
-      if (isWrite) {
-        if (os->readOnly) {
-          terminateStateOnError(*bound, "memory error: object read only",
-                                ReadOnly);
+      if (os->isAccessible()) {
+        if (isWrite) {
+          if (os->readOnly) {
+            terminateStateOnError(*bound,
+                                  "memory error: object read only",
+                                  User);
+          } else {
+            ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
+            wos->write(mo->getOffsetExpr(address), value);
+          }
         } else {
-          ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
-          wos->write(mo->getOffsetExpr(address), value);
+          ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
+          bindLocal(target, *bound, result);
         }
       } else {
-        ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
-        bindLocal(target, *bound, result);
+        std::stringstream msg;
+        msg << "memory error: object inaccessible. ";
+        msg << "It is rendered inaccessible because: ";
+        msg << os->inaccessible_message;
+        terminateStateOnError(state, msg.str(), Inaccessible);
       }
+    } else {
+      std::stringstream msg;
+      msg << "memory error: object inaccessible. ";
+      msg << "It is rendered inaccessible because: ";
+      msg << os->inaccessible_message;
+      terminateStateOnError(state, msg.str(), Inaccessible);
     }
 
     unbound = branches.second;
@@ -3766,6 +4037,26 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
   }
 }
 
+void Executor::executePossiblyHavoc(ExecutionState &state,
+                                    const MemoryObject *mo,
+                                    const std::string &name) {
+  if (replayKTest) {
+    terminateStateOnError(state,
+                          "klee_possibly_havoc does not support replayKTest.",
+                          Unhandled);
+    return;
+  }
+
+  unsigned id = 0;
+  std::string uniqueName = name;
+  while (!state.havocNames.insert(uniqueName).second) {
+    uniqueName = name + "_" + llvm::utostr(++id);
+  }
+
+  state.addHavocInfo(mo, uniqueName);
+}
+
+
 /***/
 
 void Executor::runFunctionAsMain(Function *f,
@@ -3817,7 +4108,8 @@ void Executor::runFunctionAsMain(Function *f,
   }
 
   ExecutionState *state = new ExecutionState(kmodule->functionMap[f]);
-  
+
+  state->condoneUndeclaredHavocs = interpreterOpts.CondoneUndeclaredHavocs;
   if (pathWriter) 
     state->pathOS = pathWriter->open();
   if (symPathWriter) 
@@ -3866,6 +4158,7 @@ void Executor::runFunctionAsMain(Function *f,
   processTree = 0;
 
   // hack to clear memory objects
+  kmodule->clearAnalysedLoops(); //Must be called before delete memry;
   delete memory;
   memory = new MemoryManager(NULL);
 
@@ -3924,7 +4217,8 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
                                    std::vector< 
                                    std::pair<std::string,
                                    std::vector<unsigned char> > >
-                                   &res) {
+                                   &res,
+                                   std::vector<HavocedLocation> &havocs) {
   solver->setTimeout(coreSolverTimeout);
 
   ExecutionState tmp(state);
@@ -3959,8 +4253,17 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
 
   std::vector< std::vector<unsigned char> > values;
   std::vector<const Array*> objects;
+  std::vector<std::string> havoc_names;
+  std::vector<BitArray> havoc_masks;
   for (unsigned i = 0; i != state.symbolics.size(); ++i)
     objects.push_back(state.symbolics[i].second);
+  for (auto i = state.havocs.begin(); i != state.havocs.end(); ++i) {
+    if (i->second.havoced) {
+      objects.push_back(i->second.value);
+      havoc_names.push_back(i->second.name);
+      havoc_masks.push_back(i->second.mask);
+    }
+  }
   bool success = solver->getInitialValues(tmp, objects, values);
   solver->setTimeout(time::Span());
   if (!success) {
@@ -3969,9 +4272,17 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
                              ConstantExpr::alloc(0, Expr::Bool));
     return false;
   }
-  
-  for (unsigned i = 0; i != state.symbolics.size(); ++i)
-    res.push_back(std::make_pair(state.symbolics[i].first->name, values[i]));
+  unsigned i = 0;
+  for (; i != state.symbolics.size(); ++i) {
+    res.push_back(std::make_pair(objects[i]->name, values[i]));
+  }
+  for (; i < values.size(); ++i) {
+    int index = i - state.symbolics.size();
+    HavocedLocation hl = {.name = havoc_names[index],
+                          .value = values[i],
+                          .mask = havoc_masks[index]};
+    havocs.push_back(hl);
+  }
   return true;
 }
 
@@ -3984,6 +4295,7 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
                                             ref<Expr> e,
                                             ref<ConstantExpr> value) {
   abort(); // FIXME: Broken until we sort out how to do the write back.
+  //FIXME: handle ObjectState::accessible here.
 
   if (DebugCheckForImpliedValues)
     ImpliedValue::checkForImpliedValues(solver->solver, e, value);

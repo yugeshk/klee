@@ -1,0 +1,261 @@
+401AC0 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push r12 | w7FFD8F9F2770
+401AC2 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push rbp | w7FFD8F9F2768
+401AC3 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push rbx | w7FFD8F9F2760
+401AC4 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rbx, rdi |
+401AC7 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | sub rsp, 0x30 |
+401ACB | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | imul esi, dword ptr [rdi] | r2160040
+401ACE | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rax, qword ptr fs:[0x28] | r7F58F3EA1728
+401AD7 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov qword ptr [rsp+0x28], rax | w7FFD8F9F2758
+401ADC | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | xor eax, eax |
+401ADE | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov qword ptr [rsp+0x8], 0x0 | w7FFD8F9F2738
+401AE7 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov qword ptr [rsp+0x10], 0x0 | w7FFD8F9F2740
+401AF0 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | lea rdx, ptr [rsp+0x18] |
+401AF5 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov qword ptr [rsp+0x18], 0x0 | w7FFD8F9F2748
+401AFE | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov qword ptr [rsp+0x20], 0x0 | w7FFD8F9F2750
+401B07 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | movsxd rbp, esi |
+401B0A | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | add rbp, qword ptr [rdi+0x18] | r2160058
+401B0E | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | lea rsi, ptr [rsp+0x8] |
+401B13 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, rbp |
+401B16 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call qword ptr [rbx+0x90] | r21600D0 w7FFD8F9F2728
+4009B0 | __libc_start_main@plt main expire_flows dmap_erase flow_extract_keys | flow_extract_keys | mov qword ptr [rsi], rdi | w7FFD8F9F2738
+4009B3 | __libc_start_main@plt main expire_flows dmap_erase flow_extract_keys | flow_extract_keys | add rdi, 0x10 |
+4009B7 | __libc_start_main@plt main expire_flows dmap_erase flow_extract_keys | flow_extract_keys | mov qword ptr [rdx], rdi | w7FFD8F9F2748
+4009BA | __libc_start_main@plt main expire_flows dmap_erase flow_extract_keys | flow_extract_keys | ret  | r7FFD8F9F2728
+401B1C | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, qword ptr [rsp+0x8] | r7FFD8F9F2738
+401B21 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call qword ptr [rbx+0x50] | r2160090 w7FFD8F9F2728
+400890 | __libc_start_main@plt main expire_flows dmap_erase int_key_hash | int_key_hash | movzx eax, word ptr [rdi] | r2161EC4
+400893 | __libc_start_main@plt main expire_flows dmap_erase int_key_hash | int_key_hash | ret  | r7FFD8F9F2728
+401B24 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | sub rsp, 0x8 |
+401B28 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rcx, qword ptr [rbx+0x38] | r2160078
+401B2C | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdx, qword ptr [rbx+0x30] | r2160070
+401B30 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | lea r8, ptr [rsp+0x18] |
+401B35 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rsi, qword ptr [rbx+0x28] | r2160068
+401B39 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r9, qword ptr [rbx+0x48] | r2160088
+401B3D | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, qword ptr [rbx+0x20] | r2160060
+401B41 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push r8 | w7FFD8F9F2720
+401B43 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r8d, dword ptr [rbx+0xa8] | r21600E8
+401B4A | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push r8 | w7FFD8F9F2718
+401B4C | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push rax | w7FFD8F9F2710
+401B4D | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r8, qword ptr [rsp+0x28] | r7FFD8F9F2738
+401B52 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call 0x401e20 | w7FFD8F9F2708
+401E20 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r15 | w7FFD8F9F2700
+401E22 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r14 | w7FFD8F9F26F8
+401E24 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r13 | w7FFD8F9F26F0
+401E26 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r12 | w7FFD8F9F26E8
+401E28 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push rbp | w7FFD8F9F26E0
+401E29 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push rbx | w7FFD8F9F26D8
+401E2A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | sub rsp, 0x48 |
+401E2E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r15d, dword ptr [rsp+0x88] | r7FFD8F9F2718
+401E36 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x30], r8 | w7FFD8F9F26C0
+401E3B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r8d, dword ptr [rsp+0x80] | r7FFD8F9F2710
+401E43 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x38], r9 | w7FFD8F9F26C8
+401E48 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x28], rsi | w7FFD8F9F26B8
+401E4D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r13d, ptr [r15-0x1] |
+401E51 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov ebp, r8d |
+401E54 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and ebp, r13d |
+401E57 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add ebp, r15d |
+401E5A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and ebp, r13d |
+401E5D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | test r15d, r15d |
+401E60 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r9d, ptr [r15+rbp*1] |
+401E64 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jle 0x401f2e |
+401E6A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r15, rdi |
+401E6D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r10d, dword ptr [rsp+0x88] | r7FFD8F9F2718
+401E75 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jmp 0x401e93 |
+401E93 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov eax, ebp |
+401E95 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and eax, r13d |
+401E98 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add eax, r10d |
+401E9B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and eax, r13d |
+401E9E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | cdqe  |
+401EA0 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea rbx, ptr [rax*4] |
+401EA8 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r14, ptr [r15+rbx*1] |
+401EAC | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add rbx, rcx |
+401EAF | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | cmp dword ptr [rdx+rax*4], r8d | r216272C
+401EB3 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r12d, dword ptr [rbx] | r216293C
+401EB6 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jnz 0x401e80 |
+401EB8 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov esi, dword ptr [r14] | r216210C
+401EBB | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | test esi, esi |
+401EBD | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jz 0x401e80 |
+401EBF | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rsi, qword ptr [rsp+0x28] | r7FFD8F9F26B8
+401EC4 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [rsp+0x24], r10d | w7FFD8F9F26B4
+401EC9 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [rsp+0x20], r8d | w7FFD8F9F26B0
+401ECE | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x18], rcx | w7FFD8F9F26A8
+401ED3 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x10], rdx | w7FFD8F9F26A0
+401ED8 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [rsp+0xc], r9d | w7FFD8F9F269C
+401EDD | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r11, ptr [rsi+rax*8] |
+401EE1 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rsi, qword ptr [rsp+0x30] | r7FFD8F9F26C0
+401EE6 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rax, qword ptr [rsp+0x38] | r7FFD8F9F26C8
+401EEB | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rdi, qword ptr [r11] | r2162518
+401EEE | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp], r11 | w7FFD8F9F2690
+401EF2 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | call rax | w7FFD8F9F2688
+400910 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | movzx ecx, word ptr [rsi] | r2161EC4
+400913 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | xor eax, eax |
+400915 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | cmp word ptr [rdi], cx | r2161EC4
+400918 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | jz 0x400920 |
+400920 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | movzx edx, word ptr [rsi+0x2] | r2161EC6
+400924 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | cmp word ptr [rdi+0x2], dx | r2161EC6
+400928 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | jnz 0x40091a |
+40092A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | mov edx, dword ptr [rsi+0x4] | r2161EC8
+40092D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | cmp dword ptr [rdi+0x4], edx | r2161EC8
+400930 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | jnz 0x40091a |
+400932 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | mov edx, dword ptr [rsi+0x8] | r2161ECC
+400935 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | cmp dword ptr [rdi+0x8], edx | r2161ECC
+400938 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | jnz 0x40091a |
+40093A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | mov edx, dword ptr [rdi+0xc] | r2161ED0
+40093D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | mov eax, dword ptr [rsi+0xc] | r2161ED0
+400940 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | and edx, 0xffffff |
+400946 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | and eax, 0xffffff |
+40094B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | cmp edx, eax |
+40094D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | setz al |
+400950 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase int_key_eq | int_key_eq | ret  | r7FFD8F9F2688
+401EF4 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | test al, al |
+401EF6 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r11, qword ptr [rsp] | r7FFD8F9F2690
+401EFA | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r9d, dword ptr [rsp+0xc] | r7FFD8F9F269C
+401EFF | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rdx, qword ptr [rsp+0x10] | r7FFD8F9F26A0
+401F04 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rcx, qword ptr [rsp+0x18] | r7FFD8F9F26A8
+401F09 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r8d, dword ptr [rsp+0x20] | r7FFD8F9F26B0
+401F0E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r10d, dword ptr [rsp+0x24] | r7FFD8F9F26B4
+401F13 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jz 0x401e80 |
+401F19 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rdx, qword ptr [r11] | r2162518
+401F1C | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rax, qword ptr [rsp+0x90] | r7FFD8F9F2720
+401F24 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [r14], 0x0 | w216210C
+401F2B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rax], rdx | w7FFD8F9F2740
+401F2E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add rsp, 0x48 |
+401F32 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop rbx | r7FFD8F9F26D8
+401F33 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop rbp | r7FFD8F9F26E0
+401F34 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r12 | r7FFD8F9F26E8
+401F36 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r13 | r7FFD8F9F26F0
+401F38 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r14 | r7FFD8F9F26F8
+401F3A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r15 | r7FFD8F9F2700
+401F3C | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | ret  | r7FFD8F9F2708
+401B57 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | add rsp, 0x20 |
+401B5B | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, qword ptr [rsp+0x18] | r7FFD8F9F2748
+401B60 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call qword ptr [rbx+0x88] | r21600C8 w7FFD8F9F2728
+4008A0 | __libc_start_main@plt main expire_flows dmap_erase ext_key_hash | ext_key_hash | movzx eax, word ptr [rdi] | r2161ED4
+4008A3 | __libc_start_main@plt main expire_flows dmap_erase ext_key_hash | ext_key_hash | ret  | r7FFD8F9F2728
+401B66 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | sub rsp, 0x8 |
+401B6A | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rcx, qword ptr [rbx+0x70] | r21600B0
+401B6E | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r9, qword ptr [rbx+0x80] | r21600C0
+401B75 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | lea r8, ptr [rsp+0x28] |
+401B7A | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdx, qword ptr [rbx+0x68] | r21600A8
+401B7E | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rsi, qword ptr [rbx+0x60] | r21600A0
+401B82 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, qword ptr [rbx+0x58] | r2160098
+401B86 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push r8 | w7FFD8F9F2720
+401B88 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r8d, dword ptr [rbx+0xa8] | r21600E8
+401B8F | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push r8 | w7FFD8F9F2718
+401B91 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | push rax | w7FFD8F9F2710
+401B92 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r8, qword ptr [rsp+0x38] | r7FFD8F9F2748
+401B97 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call 0x401e20 | w7FFD8F9F2708
+401E20 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r15 | w7FFD8F9F2700
+401E22 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r14 | w7FFD8F9F26F8
+401E24 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r13 | w7FFD8F9F26F0
+401E26 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push r12 | w7FFD8F9F26E8
+401E28 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push rbp | w7FFD8F9F26E0
+401E29 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | push rbx | w7FFD8F9F26D8
+401E2A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | sub rsp, 0x48 |
+401E2E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r15d, dword ptr [rsp+0x88] | r7FFD8F9F2718
+401E36 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x30], r8 | w7FFD8F9F26C0
+401E3B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r8d, dword ptr [rsp+0x80] | r7FFD8F9F2710
+401E43 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x38], r9 | w7FFD8F9F26C8
+401E48 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x28], rsi | w7FFD8F9F26B8
+401E4D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r13d, ptr [r15-0x1] |
+401E51 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov ebp, r8d |
+401E54 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and ebp, r13d |
+401E57 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add ebp, r15d |
+401E5A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and ebp, r13d |
+401E5D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | test r15d, r15d |
+401E60 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r9d, ptr [r15+rbp*1] |
+401E64 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jle 0x401f2e |
+401E6A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r15, rdi |
+401E6D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r10d, dword ptr [rsp+0x88] | r7FFD8F9F2718
+401E75 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jmp 0x401e93 |
+401E93 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov eax, ebp |
+401E95 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and eax, r13d |
+401E98 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add eax, r10d |
+401E9B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | and eax, r13d |
+401E9E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | cdqe  |
+401EA0 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea rbx, ptr [rax*4] |
+401EA8 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r14, ptr [r15+rbx*1] |
+401EAC | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add rbx, rcx |
+401EAF | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | cmp dword ptr [rdx+rax*4], r8d | r216337C
+401EB3 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r12d, dword ptr [rbx] | r216379C
+401EB6 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jnz 0x401e80 |
+401EB8 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov esi, dword ptr [r14] | r2162D5C
+401EBB | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | test esi, esi |
+401EBD | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jz 0x401e80 |
+401EBF | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rsi, qword ptr [rsp+0x28] | r7FFD8F9F26B8
+401EC4 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [rsp+0x24], r10d | w7FFD8F9F26B4
+401EC9 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [rsp+0x20], r8d | w7FFD8F9F26B0
+401ECE | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x18], rcx | w7FFD8F9F26A8
+401ED3 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp+0x10], rdx | w7FFD8F9F26A0
+401ED8 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [rsp+0xc], r9d | w7FFD8F9F269C
+401EDD | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | lea r11, ptr [rsi+rax*8] |
+401EE1 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rsi, qword ptr [rsp+0x30] | r7FFD8F9F26C0
+401EE6 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rax, qword ptr [rsp+0x38] | r7FFD8F9F26C8
+401EEB | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rdi, qword ptr [r11] | r2163168
+401EEE | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rsp], r11 | w7FFD8F9F2690
+401EF2 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | call rax | w7FFD8F9F2688
+400960 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | movzx ecx, word ptr [rsi] | r2161ED4
+400963 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | xor eax, eax |
+400965 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | cmp word ptr [rdi], cx | r2161ED4
+400968 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | jz 0x400970 |
+400970 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | movzx edx, word ptr [rsi+0x2] | r2161ED6
+400974 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | cmp word ptr [rdi+0x2], dx | r2161ED6
+400978 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | jnz 0x40096a |
+40097A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | mov edx, dword ptr [rsi+0x4] | r2161ED8
+40097D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | cmp dword ptr [rdi+0x4], edx | r2161ED8
+400980 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | jnz 0x40096a |
+400982 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | mov edx, dword ptr [rsi+0x8] | r2161EDC
+400985 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | cmp dword ptr [rdi+0x8], edx | r2161EDC
+400988 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | jnz 0x40096a |
+40098A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | mov edx, dword ptr [rdi+0xc] | r2161EE0
+40098D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | mov eax, dword ptr [rsi+0xc] | r2161EE0
+400990 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | and edx, 0xffffff |
+400996 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | and eax, 0xffffff |
+40099B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | cmp edx, eax |
+40099D | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | setz al |
+4009A0 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase ext_key_eq | ext_key_eq | ret  | r7FFD8F9F2688
+401EF4 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | test al, al |
+401EF6 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r11, qword ptr [rsp] | r7FFD8F9F2690
+401EFA | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r9d, dword ptr [rsp+0xc] | r7FFD8F9F269C
+401EFF | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rdx, qword ptr [rsp+0x10] | r7FFD8F9F26A0
+401F04 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rcx, qword ptr [rsp+0x18] | r7FFD8F9F26A8
+401F09 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r8d, dword ptr [rsp+0x20] | r7FFD8F9F26B0
+401F0E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov r10d, dword ptr [rsp+0x24] | r7FFD8F9F26B4
+401F13 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | jz 0x401e80 |
+401F19 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rdx, qword ptr [r11] | r2163168
+401F1C | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov rax, qword ptr [rsp+0x90] | r7FFD8F9F2720
+401F24 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov dword ptr [r14], 0x0 | w2162D5C
+401F2B | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | mov qword ptr [rax], rdx | w7FFD8F9F2750
+401F2E | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | add rsp, 0x48 |
+401F32 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop rbx | r7FFD8F9F26D8
+401F33 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop rbp | r7FFD8F9F26E0
+401F34 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r12 | r7FFD8F9F26E8
+401F36 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r13 | r7FFD8F9F26F0
+401F38 | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r14 | r7FFD8F9F26F8
+401F3A | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | pop r15 | r7FFD8F9F2700
+401F3C | __libc_start_main@plt main expire_flows dmap_erase map_impl_erase | map_impl_erase | ret  | r7FFD8F9F2708
+401B9C | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | add rsp, 0x20 |
+401BA0 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov r12, qword ptr [rbx+0x98] | r21600D8
+401BA7 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdx, qword ptr [rsp+0x18] | r7FFD8F9F2748
+401BAC | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rsi, qword ptr [rsp+0x8] | r7FFD8F9F2738
+401BB1 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, rbp |
+401BB4 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call r12 | w7FFD8F9F2728
+4009C0 | __libc_start_main@plt main expire_flows dmap_erase flow_pack_keys | flow_pack_keys | ret  | r7FFD8F9F2728
+401BB7 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdx, qword ptr [rsp+0x20] | r7FFD8F9F2750
+401BBC | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rsi, qword ptr [rsp+0x10] | r7FFD8F9F2740
+401BC1 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, rbp |
+401BC4 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call r12 | w7FFD8F9F2728
+4009C0 | __libc_start_main@plt main expire_flows dmap_erase flow_pack_keys | flow_pack_keys | ret  | r7FFD8F9F2728
+401BC7 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rdi, rbp |
+401BCA | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | call qword ptr [rbx+0x10] | r2160050 w7FFD8F9F2728
+400A70 | __libc_start_main@plt main expire_flows dmap_erase flow_destroy | flow_destroy | ret  | r7FFD8F9F2728
+401BCD | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | sub dword ptr [rbx+0xa0], 0x1 | r21600E0 w21600E0
+401BD4 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov rcx, qword ptr [rsp+0x28] | r7FFD8F9F2758
+401BD9 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | xor rcx, qword ptr fs:[0x28] | r7F58F3EA1728
+401BE2 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | jnz 0x401bf2 |
+401BE4 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | add rsp, 0x30 |
+401BE8 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | mov eax, 0x1 |
+401BED | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | pop rbx | r7FFD8F9F2760
+401BEE | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | pop rbp | r7FFD8F9F2768
+401BEF | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | pop r12 | r7FFD8F9F2770
+401BF1 | __libc_start_main@plt main expire_flows dmap_erase | dmap_erase | ret  | r7FFD8F9F2778

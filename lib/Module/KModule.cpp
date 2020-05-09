@@ -22,6 +22,7 @@
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Interpreter.h"
 #include "klee/OptionCategories.h"
+#include "klee/ExecutionState.h"
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(4, 0)
 #include "llvm/Bitcode/BitcodeWriter.h"
@@ -447,6 +448,11 @@ KFunction::KFunction(llvm::Function *_function,
     numArgs(function->arg_size()),
     numInstructions(0),
     trackCoverage(true) {
+
+  // Build loop info, for loop-invariant deduction.
+  llvm::DominatorTreeBase<llvm::BasicBlock> dt(false);
+  dt.recalculate(*function);
+  loopInfo.Analyze(dt);
   // Assign unique instruction IDs to each basic block
   for (auto &BasicBlock : *function) {
     basicBlockEntry[&BasicBlock] = numInstructions;
@@ -515,4 +521,45 @@ KFunction::~KFunction() {
   for (unsigned i=0; i<numInstructions; ++i)
     delete instructions[i];
   delete[] instructions;
+  clearAnalysedLoops();
+
+}
+
+bool KFunction::insert(const llvm::Loop *loop,
+                       const StateByteMask& forgetMask,
+                       const ExecutionState& state) {
+  std::pair<std::map<const llvm::Loop*, LoopEntryState*>::iterator, bool>
+    insRez = analysedLoops.insert
+    (std::pair<const llvm::Loop*, LoopEntryState*>(loop, 0));
+  if (insRez.second) {//Inserted new
+  } else {
+    delete insRez.first->second;
+  }
+  insRez.first->second = new LoopEntryState(forgetMask, state.addressSpace);
+  return insRez.second;
+}
+
+LoopEntryState*
+KFunction::analysedStateFor(const llvm::Loop *loop) {
+  std::map<const llvm::Loop*, LoopEntryState*>::const_iterator i =
+    analysedLoops.find(loop);
+  if (i == analysedLoops.end()) return 0;
+  return i->second;
+}
+
+void KFunction::clearAnalysedLoops() {
+  for (std::map<const llvm::Loop*, LoopEntryState*>::iterator
+         it = analysedLoops.begin(),
+         ie = analysedLoops.end();
+       it != ie; ++it) {
+    delete it->second;
+  }
+  analysedLoops.clear();
+}
+
+void KModule::clearAnalysedLoops() {
+  for (std::vector<KFunction*>::iterator i = functions.begin(),
+         e = functions.end(); i != e; ++i) {
+    (**i).clearAnalysedLoops();
+  }
 }
