@@ -30,55 +30,66 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 END_LEGAL */
 #include "pin.H"
 #include <fstream>
-#include <string>
 #include <iostream>
-#include <map>
 #include <iterator>
+#include <map>
+#include <string>
 #include <vector>
 
 std::ofstream trace;
+
+/* ===================================================================== */
+// Command line switches
+/* ===================================================================== */
+KNOB<string> KnobStartFn(KNOB_MODE_WRITEONCE, "pintool", "start-fn",
+                         "nf_core_process",
+                         "specify function at which to start tracing");
+KNOB<string> KnobEndFn(KNOB_MODE_WRITEONCE, "pintool", "end-fn", "exit@plt",
+                       "specify function at which to end tracing");
 
 typedef struct {
   unsigned long ip;
   std::string function;
   std::string assembly;
   std::string category;
-  std::map<LEVEL_BASE::REG,int> written_regs;
+  std::map<LEVEL_BASE::REG, int> written_regs;
 } instruction_data_t;
 
 std::vector<std::pair<bool, unsigned long>> addresses;
 std::vector<std::string> calls;
-std::map<LEVEL_BASE::REG,std::string> regs;
-
-std::string initial_function = "nf_core_process"; /*Verify DPDK*/
-//std::string initial_function = "ixgbe_recv_pkts"; /*Verify Hardware*/
+std::map<LEVEL_BASE::REG, std::string> regs;
 
 bool call = false;
 
 bool is_logging = false;
 
+std::string start_fn = "";
+std::string end_fn = "";
+
 #define MAX_NDEVS 128
-UINT8* mapped_memory_addr[MAX_NDEVS] = {NULL};
+UINT8 *mapped_memory_addr[MAX_NDEVS] = {NULL};
 UINT8 num_devices = 0;
-void (*stub_hardware_write)(uint64_t addr, unsigned offset, unsigned size, uint64_t value) = NULL;
-uint64_t (*stub_hardware_read)(uint64_t addr, unsigned offset, unsigned size) = NULL;
+void (*stub_hardware_write)(uint64_t addr, unsigned offset, unsigned size,
+                            uint64_t value) = NULL;
+uint64_t (*stub_hardware_read)(uint64_t addr, unsigned offset,
+                               unsigned size) = NULL;
 char *(*get_mapped_memory_ptr)(int) = NULL;
 UINT8 (*get_num_devs)() = NULL;
 
-VOID log_read_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEXT *ctxt) {
+VOID log_read_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid,
+                 CONTEXT *ctxt) {
 #if 0
 printf("intercepting read %p [%u]\n", addr, size);
 fflush(stdout);
 #endif
-if (0 != stub_hardware_read) {
-  for (int i = 0; i < num_devices; ++i) {
+  if (0 != stub_hardware_read) {
+    for (int i = 0; i < num_devices; ++i) {
       if (mapped_memory_addr[i] <= addr &&
-          addr < mapped_memory_addr[i] + (1<<20)) {
-          //printf("interesting read\n");
-          //fflush(stdout);
-        //printf("read addr :%p (%p + %lu)\n", addr, mapped_memory_addr, addr - mapped_memory_addr);
-        //printf("calling %p\n", stub_hardware_read);
-
+          addr < mapped_memory_addr[i] + (1 << 20)) {
+        // printf("interesting read\n");
+        // fflush(stdout);
+        // printf("read addr :%p (%p + %lu)\n", addr, mapped_memory_addr, addr -
+        // mapped_memory_addr); printf("calling %p\n", stub_hardware_read);
 
         CALL_APPLICATION_FUNCTION_PARAM param;
         memset(&param, 0, sizeof(param));
@@ -86,55 +97,57 @@ if (0 != stub_hardware_read) {
 
         UINT64 value;
 
-        PIN_CallApplicationFunction(ctxt, tid, CALLINGSTD_DEFAULT, AFUNPTR(stub_hardware_read), &param,
-                                    PIN_PARG(uint64_t), &value,
-                                    PIN_PARG(uint64_t), mapped_memory_addr[i],
-                                    PIN_PARG(unsigned), addr - mapped_memory_addr[i],
-                                    PIN_PARG(unsigned), size, PIN_PARG_END());
+        PIN_CallApplicationFunction(
+            ctxt, tid, CALLINGSTD_DEFAULT, AFUNPTR(stub_hardware_read), &param,
+            PIN_PARG(uint64_t), &value, PIN_PARG(uint64_t),
+            mapped_memory_addr[i], PIN_PARG(unsigned),
+            addr - mapped_memory_addr[i], PIN_PARG(unsigned), size,
+            PIN_PARG_END());
 
         memcpy(addr, &value, size);
       }
+    }
   }
-}
-if (is_logging)
-      addresses.push_back(std::make_pair(0, (unsigned long)addr));
+  if (is_logging)
+    addresses.push_back(std::make_pair(0, (unsigned long)addr));
 }
 
-VOID intercept_write_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid, CONTEXT *ctxt) {
+VOID intercept_write_op(VOID *ip, UINT8 *addr, UINT32 size, THREADID tid,
+                        CONTEXT *ctxt) {
 #if 0
     printf("intercepting write %p [%u]\n", addr, size);
     fflush(stdout);
 #endif
-  if (1 == size) return;
-  if (0 == stub_hardware_write) return;
+  if (1 == size)
+    return;
+  if (0 == stub_hardware_write)
+    return;
   for (int i = 0; i < num_devices; ++i) {
-      if (mapped_memory_addr[i] <= addr &&
-          addr < mapped_memory_addr[i] + (1<<20)) {
-	    //printf("interesting write %d : %p[%u]\n", i, addr, size);
-	    //fflush(stdout);
+    if (mapped_memory_addr[i] <= addr &&
+        addr < mapped_memory_addr[i] + (1 << 20)) {
+      // printf("interesting write %d : %p[%u]\n", i, addr, size);
+      // fflush(stdout);
 
+      UINT64 value;
+      memcpy(&value, addr, size);
+      // printf("write addr :%p (%p + %lu)", addr, mapped_memory_addr[i], addr -
+      // mapped_memory_addr[i]);
 
-	    UINT64 value;   
-	    memcpy(&value, addr, size);
-	    //printf("write addr :%p (%p + %lu)", addr, mapped_memory_addr[i], addr - mapped_memory_addr[i]);
-            
+      CALL_APPLICATION_FUNCTION_PARAM param;
+      memset(&param, 0, sizeof(param));
+      param.native = true;
 
-	    CALL_APPLICATION_FUNCTION_PARAM param;
-	    memset(&param, 0, sizeof(param));
-	    param.native = true;
+      UINT64 dummy_ret;
+      // printf("calling the stub_hardware_write\n");
 
-	    UINT64 dummy_ret;
-            //printf("calling the stub_hardware_write\n");
-
-	    PIN_CallApplicationFunction(ctxt, tid, CALLINGSTD_DEFAULT, AFUNPTR(stub_hardware_write), &param,
-					PIN_PARG(uint64_t), &dummy_ret,
-					PIN_PARG(uint64_t), mapped_memory_addr[i],
-					PIN_PARG(unsigned), addr - mapped_memory_addr[i],
-					PIN_PARG(unsigned), size,
-					PIN_PARG(uint64_t), value,
-					PIN_PARG_END());
-      }
-   }
+      PIN_CallApplicationFunction(
+          ctxt, tid, CALLINGSTD_DEFAULT, AFUNPTR(stub_hardware_write), &param,
+          PIN_PARG(uint64_t), &dummy_ret, PIN_PARG(uint64_t),
+          mapped_memory_addr[i], PIN_PARG(unsigned),
+          addr - mapped_memory_addr[i], PIN_PARG(unsigned), size,
+          PIN_PARG(uint64_t), value, PIN_PARG_END());
+    }
+  }
 }
 
 VOID log_write_op(VOID *ip, VOID *addr) {
@@ -144,28 +157,32 @@ VOID log_write_op(VOID *ip, VOID *addr) {
 
 // This function is called before every instruction is executed
 // and prints the IP
-VOID log_instruction(CONTEXT* ctx,instruction_data_t *id) {
+VOID log_instruction(CONTEXT *ctx, instruction_data_t *id) {
   if (call) {
     calls.push_back(id->function);
     call = false;
   }
-  if (!is_logging) return;
+  if (!is_logging)
+    return;
 
   /* Printing values of all registers before the instruction was executed */
-  for(std::map<LEVEL_BASE::REG,std::string>::iterator i = regs.begin(); i!= regs.end(); ++i) { 
-  
-	  trace << i->second << " ("<<i->first<<")"<< " = " << PIN_GetContextReg(ctx, i->first) << std::endl ;
-	  
+  for (std::map<LEVEL_BASE::REG, std::string>::iterator i = regs.begin();
+       i != regs.end(); ++i) {
+
+    trace << i->second << " (" << i->first << ")"
+          << " = " << PIN_GetContextReg(ctx, i->first) << std::endl;
   }
-  
+
   /* Commenting for now, unecessary for analysis */
-  /*trace << "Number of Written Registers = " << id->written_regs.size() << std::endl;
-  for(std::map<LEVEL_BASE::REG,int>::iterator i = id->written_regs.begin(); i!= id->written_regs.end(); ++i) { 
-		  
-	  if(regs.count(i->first)) {
-		  trace<<"Write to " << regs[i->first] << std::endl;
+  /*trace << "Number of Written Registers = " << id->written_regs.size() <<
+  std::endl; for(std::map<LEVEL_BASE::REG,int>::iterator i =
+  id->written_regs.begin(); i!= id->written_regs.end(); ++i) {
+
+          if(regs.count(i->first)) {
+                  trace<<"Write to " << regs[i->first] << std::endl;
           }
-	  else if(!(LEVEL_BASE::REG_is_flags(i->first))) trace<< "Register not found " << i->first << std::endl; 
+          else if(!(LEVEL_BASE::REG_is_flags(i->first))) trace<< "Register not
+  found " << i->first << std::endl;
   }
   */
 
@@ -184,9 +201,7 @@ VOID log_instruction(CONTEXT* ctx,instruction_data_t *id) {
   trace << std::endl;
 }
 
-VOID log_call() {
-  call = true;
-}
+VOID log_call() { call = true; }
 
 VOID log_return() {
   assert((!calls.empty()) && "Return with no Call.");
@@ -200,13 +215,13 @@ VOID Instruction(INS ins, VOID *v) {
   id->ip = INS_Address(ins);
   id->function = RTN_FindNameByAddress(id->ip);
   id->assembly = INS_Disassemble(ins);
-  
+
   /* We don't print this anymore */
   id->category = CATEGORY_StringShort(INS_Category(ins));
 
   /* Getting written registers */
   for (unsigned int i = 1; i <= INS_MaxNumWRegs(ins); ++i) {
-	id->written_regs[LEVEL_BASE::REG_FullRegName(INS_RegW(ins,i))] = 1;
+    id->written_regs[LEVEL_BASE::REG_FullRegName(INS_RegW(ins, i))] = 1;
   }
 
   // Instruments memory accesses using a predicated call, i.e.
@@ -221,9 +236,8 @@ VOID Instruction(INS ins, VOID *v) {
     if (INS_MemoryOperandIsRead(ins, memOp)) {
       INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)log_read_op,
                                IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
-                               IARG_MEMORYREAD_SIZE,
-                               IARG_THREAD_ID, IARG_CONTEXT,
-                               IARG_END);
+                               IARG_MEMORYREAD_SIZE, IARG_THREAD_ID,
+                               IARG_CONTEXT, IARG_END);
     }
     // Note that in some architectures a single memory operand can be
     // both read and written (for instance incl (%eax) on IA-32)
@@ -235,9 +249,8 @@ VOID Instruction(INS ins, VOID *v) {
       if (!INS_IsProcedureCall(ins)) {
         INS_InsertPredicatedCall(ins, IPOINT_AFTER, (AFUNPTR)intercept_write_op,
                                  IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
-                                 IARG_MEMORYWRITE_SIZE,
-                                 IARG_THREAD_ID, IARG_CONTEXT,
-                                 IARG_END);
+                                 IARG_MEMORYWRITE_SIZE, IARG_THREAD_ID,
+                                 IARG_CONTEXT, IARG_END);
       }
     }
   }
@@ -245,59 +258,61 @@ VOID Instruction(INS ins, VOID *v) {
 #define ACTUALLY_TRACING 1
 #if ACTUALLY_TRACING
 
-  INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)log_instruction, IARG_CONTEXT, IARG_PTR, id,
-                 IARG_END);
-  
+  INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)log_instruction, IARG_CONTEXT,
+                 IARG_PTR, id, IARG_END);
+
   if (INS_IsRet(ins)) {
     INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)log_return, IARG_END);
   } else if (INS_IsProcedureCall(ins)) {
     INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)log_call, IARG_END);
   }
-#endif //ACTUALLY_TRACING
+#endif // ACTUALLY_TRACING
 }
 
-VOID commence_tracing(CHAR* name, ADDRINT size)
-{
-    printf("Start logging.\n");
-    fflush(stdout);
-    is_logging = true;
+VOID trace_before(CHAR *name, ADDRINT size) {
+  printf("Start logging.\n");
+  fflush(stdout);
+  is_logging = true;
 
-    /*Instantiating registers map */ 
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RAX)]="rax";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RBX)]="rbx";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RDI)]="rdi";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RSI)]="rsi";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RDX)]="rdx";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RCX)]="rcx";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RBP)]="rbp";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RSP)]="rsp";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R8)]="r8";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R9)]="r9";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R10)]="r10";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R11)]="r11";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R12)]="r12";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R13)]="r13";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R14)]="r14";
-    regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R15)]="r15";
-
+  /*Instantiating registers map */
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RAX)] = "rax";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RBX)] = "rbx";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RDI)] = "rdi";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RSI)] = "rsi";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RDX)] = "rdx";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RCX)] = "rcx";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RBP)] = "rbp";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_RSP)] = "rsp";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R8)] = "r8";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R9)] = "r9";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R10)] = "r10";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R11)] = "r11";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R12)] = "r12";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R13)] = "r13";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R14)] = "r14";
+  regs[LEVEL_BASE::REG_FullRegName(LEVEL_BASE::REG_R15)] = "r15";
 }
 
-VOID Image(IMG img, VOID* v)
-{
-    //for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) ) {
-    //    printf("looking over the symbol: %s\n", SYM_Name(sym).c_str());
-    //}
-	RTN processRtn = RTN_FindByName(img, initial_function.c_str());
-	if (RTN_Valid(processRtn)) {
-		RTN_Open(processRtn);
-		RTN_InsertCall(processRtn, IPOINT_BEFORE, (AFUNPTR) commence_tracing, IARG_ADDRINT, initial_function.c_str(), IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END);
-		RTN_Close(processRtn);
-                //printf("Found %s in %s.\n", initial_function.c_str(), IMG_Name(img).c_str());
-                //fflush(stdout);
-	} else {
-            //printf("Could not find %s function in %s.\n", initial_function.c_str(),IMG_Name(img).c_str());
-            //fflush(stdout);
-	}
+VOID trace_after(ADDRINT ret) { is_logging = false; }
+
+VOID Image(IMG img, VOID *v) {
+
+  RTN processRtn = RTN_FindByName(img, start_fn.c_str());
+  if (RTN_Valid(processRtn)) {
+    RTN_Open(processRtn);
+    RTN_InsertCall(processRtn, IPOINT_BEFORE, (AFUNPTR)trace_before,
+                   IARG_ADDRINT, start_fn.c_str(),
+                   IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END);
+    RTN_Close(processRtn);
+  } else {
+  }
+  processRtn = RTN_FindByName(img, end_fn.c_str());
+  if (RTN_Valid(processRtn)) {
+    RTN_Open(processRtn);
+    RTN_InsertCall(processRtn, IPOINT_AFTER, (AFUNPTR)trace_after,
+                   IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
+    RTN_Close(processRtn);
+  }
 }
 // This function is called when the application exits
 VOID Fini(INT32 code, VOID *v) {
@@ -315,68 +330,69 @@ INT32 Usage() {
   return -1;
 }
 
-static VOID imageLoad(IMG img, VOID *v)
-{
-    // Just instrument the main image.
-    if (!IMG_IsMainExecutable(img))
-        return;
+static VOID imageLoad(IMG img, VOID *v) {
+  // Just instrument the main image.
+  if (!IMG_IsMainExecutable(img))
+    return;
 
-    for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) ) {
-      if (0 == strcmp(SYM_Name(sym).c_str(), "get_num_devs")) {
-        *(ADDRINT*)&get_num_devs = SYM_Address(sym);
-        //printf("pinned num devs: %p\n", get_num_devs);
-      }
-      if (0 == strcmp(SYM_Name(sym).c_str(), "get_mapped_memory_ptr")) {
-        *(ADDRINT*)&get_mapped_memory_ptr = SYM_Address(sym);
-	//printf("pinned mapped memory: %p\n", get_mapped_memory_ptr);
-      }
-      if (0 == strcmp(SYM_Name(sym).c_str(), "stub_hardware_read_wrapper")) {
-        *(ADDRINT*)&stub_hardware_read = SYM_Address(sym);
-	//printf("pinned read fun: %p\n", stub_hardware_read);
-      }
-      if (0 == strcmp(SYM_Name(sym).c_str(), "stub_hardware_write_wrapper")) {
-        *(ADDRINT*)&stub_hardware_write = SYM_Address(sym);
-	//printf("pinned write fun: %p\n", stub_hardware_write);
-      }
+  for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym)) {
+    if (0 == strcmp(SYM_Name(sym).c_str(), "get_num_devs")) {
+      *(ADDRINT *)&get_num_devs = SYM_Address(sym);
+      // printf("pinned num devs: %p\n", get_num_devs);
     }
-
-    if (0 != get_num_devs) {
-        assert(get_mapped_memory_ptr);
-        assert(stub_hardware_read);
-        assert(stub_hardware_write);
-
-        //printf("calling num_devs\n");
-        //fflush(stdout);
-        num_devices = (UINT8)get_num_devs();
-        //printf("got %d\n", num_devices);
-        //fflush(stdout);
-        assert(num_devices <= MAX_NDEVS);
-        for (int i = 0; i < num_devices; ++i) {
-            //printf("calling get_mapped_memory for %d\n", i);
-            //fflush(stdout);
-            mapped_memory_addr[i] = (UINT8*)get_mapped_memory_ptr(i);
-            //printf("got: %p\n", mapped_memory_addr[i]);
-            //fflush(stdout);
-        }
-        //printf("init done\n");
-        //fflush(stdout);
+    if (0 == strcmp(SYM_Name(sym).c_str(), "get_mapped_memory_ptr")) {
+      *(ADDRINT *)&get_mapped_memory_ptr = SYM_Address(sym);
+      // printf("pinned mapped memory: %p\n", get_mapped_memory_ptr);
     }
+    if (0 == strcmp(SYM_Name(sym).c_str(), "stub_hardware_read_wrapper")) {
+      *(ADDRINT *)&stub_hardware_read = SYM_Address(sym);
+      // printf("pinned read fun: %p\n", stub_hardware_read);
+    }
+    if (0 == strcmp(SYM_Name(sym).c_str(), "stub_hardware_write_wrapper")) {
+      *(ADDRINT *)&stub_hardware_write = SYM_Address(sym);
+      // printf("pinned write fun: %p\n", stub_hardware_write);
+    }
+  }
+
+  if (0 != get_num_devs) {
+    assert(get_mapped_memory_ptr);
+    assert(stub_hardware_read);
+    assert(stub_hardware_write);
+
+    // printf("calling num_devs\n");
+    // fflush(stdout);
+    num_devices = (UINT8)get_num_devs();
+    // printf("got %d\n", num_devices);
+    // fflush(stdout);
+    assert(num_devices <= MAX_NDEVS);
+    for (int i = 0; i < num_devices; ++i) {
+      // printf("calling get_mapped_memory for %d\n", i);
+      // fflush(stdout);
+      mapped_memory_addr[i] = (UINT8 *)get_mapped_memory_ptr(i);
+      // printf("got: %p\n", mapped_memory_addr[i]);
+      // fflush(stdout);
+    }
+    // printf("init done\n");
+    // fflush(stdout);
+  }
 }
 
-EXCEPT_HANDLING_RESULT ExceptionHandler(THREADID tid, EXCEPTION_INFO *pExceptInfo, PHYSICAL_CONTEXT *pPhysCtxt, VOID *v)
-{
-   EXCEPTION_CODE c = PIN_GetExceptionCode(pExceptInfo);
-   EXCEPTION_CLASS cl = PIN_GetExceptionClass(c);
-   std::cout << "Exception class " << cl;
-   std::cout << PIN_ExceptionToString(pExceptInfo);
-   return EHR_UNHANDLED ;
+EXCEPT_HANDLING_RESULT ExceptionHandler(THREADID tid,
+                                        EXCEPTION_INFO *pExceptInfo,
+                                        PHYSICAL_CONTEXT *pPhysCtxt, VOID *v) {
+  EXCEPTION_CODE c = PIN_GetExceptionCode(pExceptInfo);
+  EXCEPTION_CLASS cl = PIN_GetExceptionClass(c);
+  std::cout << "Exception class " << cl;
+  std::cout << PIN_ExceptionToString(pExceptInfo);
+  return EHR_UNHANDLED;
 }
 
-EXCEPT_HANDLING_RESULT GlobalHandler2(THREADID threadIndex, EXCEPTION_INFO * pExceptInfo, 
-                                      PHYSICAL_CONTEXT * pPhysCtxt, VOID *v)
-{
-    cout << "GlobalHandler2: Caught exception. " << PIN_ExceptionToString(pExceptInfo) << endl;
-    return EHR_CONTINUE_SEARCH;
+EXCEPT_HANDLING_RESULT GlobalHandler2(THREADID threadIndex,
+                                      EXCEPTION_INFO *pExceptInfo,
+                                      PHYSICAL_CONTEXT *pPhysCtxt, VOID *v) {
+  cout << "GlobalHandler2: Caught exception. "
+       << PIN_ExceptionToString(pExceptInfo) << endl;
+  return EHR_CONTINUE_SEARCH;
 }
 
 /* ===================================================================== */
@@ -395,6 +411,9 @@ int main(int argc, char *argv[]) {
   if (PIN_Init(argc, argv))
     return Usage();
 
+  // Knobs
+  start_fn = KnobStartFn.Value();
+  end_fn = KnobEndFn.Value();
 
   // Exception handler
   PIN_AddInternalExceptionHandler(GlobalHandler2, NULL);
@@ -410,7 +429,7 @@ int main(int argc, char *argv[]) {
   IMG_AddInstrumentFunction(imageLoad, 0);
 
   // Register here your exception handler function
-  PIN_AddInternalExceptionHandler(ExceptionHandler,NULL);
+  PIN_AddInternalExceptionHandler(ExceptionHandler, NULL);
 
   // Register Fini to be called when the application exits
   PIN_AddFiniFunction(Fini, 0);

@@ -137,7 +137,9 @@ ExecutionState::ExecutionState(const ExecutionState &state)
   for (auto it = havocs.begin(); it != havocs.end(); ++it) {
     it->first->refCount++;
   }
-  LOG_LA("Cloning ES " << (void *)this << " from " << (void *)&state);
+  if (loopInProcess.isNull()) {
+    LOG_LA("Cloning ES " << (void *)this << " from " << (void *)&state);
+  }
 }
 
 void ExecutionState::addHavocInfo(const MemoryObject *mo,
@@ -964,7 +966,7 @@ void ExecutionState::loopEnter(const llvm::Loop *dstLoop) {
 }
 
 void ExecutionState::loopExit(const llvm::Loop *srcLoop, bool *terminate) {
-  LOG_LA("Loop exit");
+  LOG_LA("Loop exit in state " << (void *)this);
   if (!loopInProcess.isNull()) {
     if (loopInProcess->getLoop() == srcLoop) {
       LOG_LA("[" << loopInProcess->getLoop() << "]The loop is in process");
