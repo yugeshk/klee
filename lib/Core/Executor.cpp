@@ -79,7 +79,7 @@
 
 //TODO: generalize for other LLVM versions like the above
 #include <llvm/Analysis/LoopInfo.h>
-#include <llvm/Analysis/Dominators.h>
+#include <llvm/IR/Dominators.h>
 
 #include <cassert>
 #include <cerrno>
@@ -3783,7 +3783,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (!isa<ConstantExpr>(address)) {
       printf("\n");
       printf("Some symbolic indexing going on here:\n");
-      state.pc->printFileLine(llvm::errs());
       state.dumpStack(llvm::errs());
     }
   }

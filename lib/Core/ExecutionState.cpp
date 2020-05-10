@@ -16,6 +16,7 @@
 #include "TimingSolver.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/OptionCategories.h"
 
@@ -25,10 +26,13 @@
 #include "klee/Expr.h"
 #include "klee/ExprBuilder.h"
 
-#include "llvm/DebugInfo.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/FileSystem.h"
 
 #include <algorithm>
 #include <cassert>
@@ -71,18 +75,15 @@ StackFrame::~StackFrame() { delete[] locals; }
 
 ExecutionState::ExecutionState(KFunction *kf)
     : pc(kf->instructions), prevPC(pc),
-
       executionStateForLoopInProcess(0),
-
-    weight(1),
-    depth(0),
-
-    instsSinceCovNew(0),
-    coveredNew(false),
-    forkDisabled(false),
-    ptreeNode(0),
-    steppedInstructions(0)
-    relevantSymbols(), doTrace(true), condoneUndeclaredHavocs(false){
+      weight(1),
+      depth(0),
+      instsSinceCovNew(0),
+      coveredNew(false),
+      forkDisabled(false),
+      ptreeNode(0),
+      steppedInstructions(0),
+      relevantSymbols(), doTrace(true), condoneUndeclaredHavocs(false){
   pushFrame(0, kf);
 }
 
@@ -130,19 +131,19 @@ ExecutionState::ExecutionState(const ExecutionState &state)
 
       pathOS(state.pathOS), symPathOS(state.symPathOS),
 
-    instsSinceCovNew(state.instsSinceCovNew),
-    coveredNew(state.coveredNew),
-    forkDisabled(state.forkDisabled),
-    coveredLines(state.coveredLines),
-    ptreeNode(state.ptreeNode),
-    symbolics(state.symbolics),
-    arrayNames(state.arrayNames),
-    openMergeStack(state.openMergeStack),
-    steppedInstructions(state.steppedInstructions)
-    havocs(state.havocs), havocNames(state.havocNames),
-    callPath(state.callPath),
-    relevantSymbols(state.relevantSymbols), doTrace(state.doTrace),
-    condoneUndeclaredHavocs(state.condoneUndeclaredHavocs),
+      instsSinceCovNew(state.instsSinceCovNew),
+      coveredNew(state.coveredNew),
+      forkDisabled(state.forkDisabled),
+      coveredLines(state.coveredLines),
+      ptreeNode(state.ptreeNode),
+      symbolics(state.symbolics),
+      arrayNames(state.arrayNames),
+      openMergeStack(state.openMergeStack),
+      steppedInstructions(state.steppedInstructions),
+      havocs(state.havocs), havocNames(state.havocNames),
+      callPath(state.callPath),
+      relevantSymbols(state.relevantSymbols), doTrace(state.doTrace),
+      condoneUndeclaredHavocs(state.condoneUndeclaredHavocs)
 {
   for (unsigned int i=0; i<symbolics.size(); i++)
     symbolics[i].first->refCount++;
@@ -166,6 +167,7 @@ void ExecutionState::addHavocInfo(const MemoryObject *mo,
   mo->refCount++;
 }
 
+ExecutionState *ExecutionState::branch() {
   depth++;
 
   ExecutionState *falseState = new ExecutionState(*this);
@@ -512,7 +514,7 @@ ExecutionState::relevantConstraints(SymbolSet symbols) const {
         for (SymbolSet::const_iterator csi = constrainedSymbols.begin(),
                                        cse = constrainedSymbols.end();
              csi != cse; ++csi) {
-          bool inserted = symbols.insert(*csi);
+          bool inserted = std::get<1>(symbols.insert(*csi));
           newSymbols = newSymbols || inserted;
         }
         symbols.insert(constrainedSymbols.begin(), constrainedSymbols.end());
@@ -1506,10 +1508,11 @@ bool klee::updateDiffMask(StateByteMask *mask, const AddressSpace &refValues,
       if (isa<llvm::Instruction>(obj->allocSite)) {
         const llvm::Instruction *inst =
             dyn_cast<llvm::Instruction>(obj->allocSite);
-        if (llvm::MDNode *node = inst->getMetadata("dbg")) {
-          llvm::DILocation loc(node);
-          metadata = loc.getDirectory().str() + "/" + loc.getFilename().str() +
-                     ":" + numToStr(loc.getLineNumber());
+        if (const DebugLoc &location = inst->getDebugLoc()) {
+          if(const DILocation *loc = location.get()){
+          metadata = loc->getDirectory().str() + "/" + loc->getFilename().str() +
+                     ":" + numToStr(loc->getLine());
+          }
         } else {
           metadata = "(unknown)";
         }
@@ -1544,11 +1547,11 @@ bool klee::updateDiffMask(StateByteMask *mask, const AddressSpace &refValues,
         // it also differs structuraly now. It is time to make
         // sure it can be really different.
 
-        solver->setTimeout(0.01); // TODO: determine a correct argument here.
+        solver->setTimeout(time::Span("1")); // TODO: determine a correct argument here.
         bool mayDiffer = true;
         bool solverRes = solver->mayBeFalse(state, EqExpr::create(refVal, val),
                                             /*&*/ mayDiffer);
-        solver->setTimeout(0);
+        solver->setTimeout(time::Span());
         // assert(solverRes &&
         //       "Solver failed in computing whether a byte changed or not.");
         if (solverRes && mayDiffer) {
@@ -1603,14 +1606,14 @@ void ExecutionState::dumpConstraints() const {
     tmp /= 10;
   }
   fname += ".txt";
-  std::string Error;
+  std::error_code Error;
   llvm::raw_ostream *file =
-      new llvm::raw_fd_ostream(fname.c_str(), Error, llvm::sys::fs::F_None);
-  if (!Error.empty()) {
+      new llvm::raw_fd_ostream(StringRef(fname.c_str()), Error, llvm::sys::fs::F_None);
+  if (Error) {
     printf("error opening file \"%s\".  KLEE may have run out of file "
            "descriptors: try to increase the maximum number of open file "
-           "descriptors by using ulimit (%s).",
-           fname.c_str(), Error.c_str());
+           "descriptors by using ulimit.",
+           fname.c_str());
     delete file;
     file = NULL;
     return;

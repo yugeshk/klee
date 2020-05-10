@@ -30,6 +30,7 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #endif
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -452,7 +453,7 @@ KFunction::KFunction(llvm::Function *_function,
   // Build loop info, for loop-invariant deduction.
   llvm::DominatorTreeBase<llvm::BasicBlock> dt(false);
   dt.recalculate(*function);
-  loopInfo.Analyze(dt);
+  loopInfo.analyze(dt);
   // Assign unique instruction IDs to each basic block
   for (auto &BasicBlock : *function) {
     basicBlockEntry[&BasicBlock] = numInstructions;
@@ -558,8 +559,7 @@ void KFunction::clearAnalysedLoops() {
 }
 
 void KModule::clearAnalysedLoops() {
-  for (std::vector<KFunction*>::iterator i = functions.begin(),
-         e = functions.end(); i != e; ++i) {
-    (**i).clearAnalysedLoops();
+  for (auto it = functions.begin(); it != functions.end(); ++it) {
+    (**it).clearAnalysedLoops();
   }
 }

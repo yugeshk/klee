@@ -15,9 +15,9 @@ pushd "$KLEE_DIR/build"
                         cmake \
                             -DENABLE_UNIT_TESTS=OFF \
                             -DBUILD_SHARED_LIBS=OFF \
-                            -DLLVM_CONFIG_BINARY="$KLEE_DIR/../llvm/Release/bin/llvm-config" \
-                            -DLLVMCC="$KLEE_DIR/../llvm/Release/bin/clang" \
-                            -DLLVMCXX="$KLEE_DIR/../llvm/Release/bin/clang++" \
+                            -DLLVM_CONFIG_BINARY="$KLEE_DIR/../llvm/build/bin/llvm-config" \
+                            -DLLVMCC="$KLEE_DIR/../llvm/build/bin/clang" \
+                            -DLLVMCXX="$KLEE_DIR/../llvm/build/bin/clang++" \
                             -DENABLE_SOLVER_Z3=ON \
                             -DENABLE_KLEE_UCLIBC=ON \
                             -DKLEE_UCLIBC_PATH="$KLEE_DIR/../klee-uclibc" \

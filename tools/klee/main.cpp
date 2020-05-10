@@ -133,21 +133,21 @@ namespace {
   DumpCallTracePrefixes("dump-call-trace-prefixes",
                         cl::desc("Compute and dump all the prefixes for the call "
                                  "traces, generated according to klee_trace_*."),
-                        cl::init(false)
+                        cl::init(false),
                         cl::cat(TestCaseCat));
 
   cl::opt<bool>
   DumpCallTraceTree( "dump-call-trace-tree",
                     cl::desc("Compute and dump the tree formed by the call paths "
                             "generated according to klee_trace_*."),
-                    cl::init(false)
+                    cl::init(false),
                     cl::cat(TestCaseCat));
 
   cl::opt<bool> 
   DumpConstraintTree("dump-constraint-tree",
                     cl::desc("Compute and dump the meta-info for "
                             "the tree formed by the constraints"),
-                    cl::init(false)
+                    cl::init(false),
                     cl::cat(TestCaseCat));
 
   cl::opt<bool>
@@ -155,7 +155,7 @@ namespace {
                 cl::desc("Dump call traces into separate file each. The call "
                         "traces consist of function invocations with the "
                         "klee_trace_ret* intrinsic labels."),
-                cl::init(false)
+                cl::init(false),
                 cl::cat(TestCaseCat));
 
   /*** Startup options ***/
@@ -438,7 +438,7 @@ public:
                                  std::vector<std::string> &results);
 
   static std::string getRunTimeLibraryPath(const char *argv0);
-  llvm::raw_fd_ostream *openNextCallPathPrefixFile();
+  std::unique_ptr<llvm::raw_fd_ostream> openNextCallPathPrefixFile();
 
   void dumpCallPathPrefixes();
   void dumpCallPathTree();
@@ -594,7 +594,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
   if (!WriteNone) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
     std::vector<HavocedLocation> havocs;
-    bool success = m_interpreter->getSymbolicSolution(state, out);
+    bool success = m_interpreter->getSymbolicSolution(state, out, havocs);
 
     if (!success)
       klee_warning("unable to get symbolic solution, losing test case");
@@ -676,10 +676,9 @@ void KleeHandler::processTestCase(const ExecutionState &state,
                                id);
       }
       if (DumpCallTraces) {
-        llvm::raw_fd_ostream *trace_file =
+        std::unique_ptr<llvm::raw_fd_ostream> trace_file =
             openOutputFile(getTestFilename("call_path", id));
-        dumpCallPath(state, trace_file);
-        delete trace_file;
+        dumpCallPath(state, trace_file.get());
       }
 
       if (DumpConstraintTree) {
@@ -1088,12 +1087,12 @@ void KleeHandler::processCallPath(const ExecutionState &state) {
   std::stringstream filename;
   filename << "call-path" << std::setfill('0') << std::setw(6) << id << '.'
            << "txt";
-  llvm::raw_ostream *file = openOutputFile(filename.str());
+  std::unique_ptr<llvm::raw_fd_ostream> file = openOutputFile(filename.str());
   for (std::vector<CallInfo>::const_iterator iter = state.callPath.begin(),
                                              end = state.callPath.end();
        iter != end; ++iter) {
     const CallInfo &ci = *iter;
-    bool dumped = dumpCallInfo(ci, *file);
+    bool dumped = dumpCallInfo(ci, *file.get());
     if (!dumped)
       break;
   }
@@ -1103,10 +1102,9 @@ void KleeHandler::processCallPath(const ExecutionState &state) {
        ci != cEnd; ++ci) {
     *file << **ci << "\n";
   }
-  delete file;
 }
 
-llvm::raw_fd_ostream *KleeHandler::openNextCallPathPrefixFile() {
+std::unique_ptr<llvm::raw_fd_ostream> KleeHandler::openNextCallPathPrefixFile() {
   unsigned id = ++m_callPathPrefixIndex;
   std::stringstream filename;
   filename << "call-prefix" << std::setfill('0') << std::setw(6) << id << '.'
@@ -1122,22 +1120,18 @@ void KleeHandler::dumpCallPathPrefixes() {
 
 void KleeHandler::dumpCallPathTree() {
   std::string filename = "call-tree.txt";
-  llvm::raw_ostream *tree_file = this->openOutputFile(filename);
+  std::unique_ptr<llvm::raw_ostream> tree_file = this->openOutputFile(filename);
   filename = "calls.txt";
-  llvm::raw_ostream *calls_file = this->openOutputFile(filename);
-  m_callTree.dumpCallTree(std::vector<CallPathTip>(), tree_file, calls_file);
-  delete tree_file;
-  delete calls_file;
+  std::unique_ptr<llvm::raw_ostream> calls_file = this->openOutputFile(filename);
+  m_callTree.dumpCallTree(std::vector<CallPathTip>(), tree_file.get(), calls_file.get());
 }
 
 void KleeHandler::dumpConstraintTree() {
   std::string filename = "constraint-tree.txt";
-  llvm::raw_ostream *tree_file = this->openOutputFile(filename);
+  std::unique_ptr<llvm::raw_ostream> tree_file = this->openOutputFile(filename);
   filename = "constraint-branches.txt";
-  llvm::raw_ostream *constraints_file = this->openOutputFile(filename);
-  m_constraintTree.dumpConstraintTree(tree_file, constraints_file);
-  delete tree_file;
-  delete constraints_file;
+  std::unique_ptr<llvm::raw_ostream> constraints_file = this->openOutputFile(filename);
+  m_constraintTree.dumpConstraintTree(tree_file.get(), constraints_file.get());
 }
 
 void KleeHandler::dumpCallPath(const ExecutionState &state,
@@ -1487,11 +1481,11 @@ void CallTree::dumpCallPrefixes(
   std::vector<std::vector<CallPathTip *>>::iterator ti = tipCalls.begin(),
                                                     te = tipCalls.end();
   for (; ti != te; ++ti) {
-    llvm::raw_ostream *file = fileOpener->openNextCallPathPrefixFile();
+    std::unique_ptr<llvm::raw_ostream> file = fileOpener->openNextCallPathPrefixFile();
     std::list<CallInfo>::iterator ai = accumulated_prefix.begin(),
                                   ae = accumulated_prefix.end();
     for (; ai != ae; ++ai) {
-      bool dumped = dumpCallInfo(*ai, *file);
+      bool dumped = dumpCallInfo(*ai, *file.get());
       assert(dumped);
     }
     *file << "--- Constraints ---\n";
@@ -1530,7 +1524,6 @@ void CallTree::dumpCallPrefixes(
       *file << "true)\n";
     }
     *file << "false)\n";
-    delete file;
   }
   std::vector<CallTree *>::iterator ci = children.begin(), ce = children.end();
   for (; ci != ce; ++ci) {
@@ -1580,12 +1573,12 @@ void CallTree::dumpCallPrefixesSExpr(std::list<CallInfo> accumulated_prefix,
   std::vector<std::vector<CallPathTip *>>::iterator ti = tipCalls.begin(),
                                                     te = tipCalls.end();
   for (; ti != te; ++ti) {
-    llvm::raw_ostream *file = fileOpener->openNextCallPathPrefixFile();
+    std::unique_ptr<llvm::raw_ostream> file = fileOpener->openNextCallPathPrefixFile();
     std::list<CallInfo>::iterator ai = accumulated_prefix.begin(),
                                   ae = accumulated_prefix.end();
     *file << "((history (\n";
     for (; ai != ae; ++ai) {
-      bool dumped = dumpCallInfoSExpr(*ai, *file);
+      bool dumped = dumpCallInfoSExpr(*ai, *file.get());
       assert(dumped);
     }
     *file << "))\n";
@@ -1600,7 +1593,6 @@ void CallTree::dumpCallPrefixesSExpr(std::list<CallInfo> accumulated_prefix,
       assert(dumped);
     }
     *file << ")))\n";
-    delete file;
   }
   std::vector<CallTree *>::iterator ci = children.begin(), ce = children.end();
   for (; ci != ce; ++ci) {
