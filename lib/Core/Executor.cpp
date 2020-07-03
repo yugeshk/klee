@@ -1768,6 +1768,10 @@ void klee::FillCallInfoOutput(Function* f,
 }
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
+  
+  //Whenever we are about to execute an instruction, we add it to the state
+  state.callPathInstr.push_back(ki->inst);
+
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
@@ -1817,11 +1821,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                              CallSite(cast<CallInst>(caller)));
 
             // XXX need to check other param attrs ?
-#if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-            isSExt = cs.hasRetAttr(llvm::Attribute::SExt);
-#else
-            isSExt = cs.paramHasAttr(0, llvm::Attribute::SExt);
-#endif
+            #if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
+              isSExt = cs.hasRetAttr(llvm::Attribute::SExt);
+            #else
+              isSExt = cs.paramHasAttr(0, llvm::Attribute::SExt);
+            #endif
             }
 
 
@@ -1958,11 +1962,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // switch to an internal rep.
       llvm::IntegerType *Ty = cast<IntegerType>(si->getCondition()->getType());
       ConstantInt *ci = ConstantInt::get(Ty, CE->getZExtValue());
-#if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-      unsigned index = si->findCaseValue(ci)->getSuccessorIndex();
-#else
-      unsigned index = si->findCaseValue(ci).getSuccessorIndex();
-#endif
+      #if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
+        unsigned index = si->findCaseValue(ci)->getSuccessorIndex();
+      #else
+        unsigned index = si->findCaseValue(ci).getSuccessorIndex();
+      #endif
       transferToBasicBlock(si->getSuccessor(index), si->getParent(), state);
     } else {
       // Handle possible different branch targets
@@ -1978,12 +1982,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       std::map<ref<Expr>, BasicBlock *> expressionOrder;
 
       // Iterate through all non-default cases and order them by expressions
-#if LLVM_VERSION_CODE > LLVM_VERSION(3, 4)
-      for (auto i : si->cases()) {
-#else
-      for (SwitchInst::CaseIt i = si->case_begin(), e = si->case_end(); i != e;
-           ++i) {
-#endif
+      #if LLVM_VERSION_CODE > LLVM_VERSION(3, 4)
+        for (auto i : si->cases()) {
+      #else
+        for (SwitchInst::CaseIt i = si->case_begin(), e = si->case_end(); i != e; ++i) {
+      #endif
         ref<Expr> value = evalConstant(i.getCaseValue());
 
         BasicBlock *caseSuccessor = i.getCaseSuccessor();

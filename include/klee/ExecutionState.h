@@ -271,6 +271,9 @@ public:
   /// @brief Constraints collected so far
   ConstraintManager constraints;
 
+  /// @brief Instructions executed so far
+  std::vector<llvm::Instruction *> callPathInstr;
+
   /// Statistics and information
 
   /// @brief Costs for all queries issued for this state, in seconds
