@@ -162,6 +162,12 @@ namespace {
                 cl::init(false),
                 cl::cat(TestCaseCat));
 
+  cl::opt<bool>
+  DumpCallTraceInstructions("dump-call-trace-instructions",
+                cl::desc("Log and dump each instruction executed for a call trace."),
+                cl::init(false),
+                cl::cat(TestCaseCat));
+
   /*** Startup options ***/
 
   cl::OptionCategory StartCat("Startup options",
@@ -450,6 +456,7 @@ public:
   void dumpConstraintTree();
   void dumpCallPath(const ExecutionState &state, llvm::raw_ostream *file);
   void dumpReusedSymbols();
+  void dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file);
 };
 
 KleeHandler::KleeHandler(int argc, char **argv)
@@ -698,6 +705,13 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         }
         reused_symbols[it.first].insert(it.second.begin(), it.second.end());
       }
+      
+      if(DumpCallTraceInstructions){
+        std::unique_ptr<llvm::raw_fd_ostream> instr_trace_file = 
+          openOutputFile(getTestFilename("ll", id));
+        dumpCallPathInstructions(state, instr_trace_file.get());
+      }
+
       for (unsigned i = 0; i < b.numObjects; i++)
         delete[] b.objects[i].bytes;
       delete[] b.objects;
@@ -1258,6 +1272,14 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
       delete buf;
     }
   }
+}
+
+void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file) {
+  *file << ";;-- LLVM Instruction trace --\n";
+  for (auto it : state.callPathInstr){
+    *file << *it << "\n";
+  }
+  
 }
 
 // load a .path file
