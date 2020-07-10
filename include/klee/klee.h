@@ -260,6 +260,8 @@ void klee_trace_extra_ptr(void *ptr, int width, char *name, char *type,
                           char *prefix, TracingDirection td);
 void klee_trace_extra_fptr(void *ptr, int width, char *name, char *type,
                            char *prefix, TracingDirection td);
+void klee_begin_instruction_tracing();
+void klee_end_instruction_tracing();
 void klee_trace_extra_ptr_field(void *ptr, int offset, int width, char *name,
                                 TracingDirection td);
 void klee_trace_extra_ptr_field_just_ptr(void *ptr, int offset, int width,

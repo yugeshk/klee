@@ -284,7 +284,7 @@ public:
   std::vector<std::string> traceCallStack;
 
   /// @brief Hash Map between CallStack and and llvm Instruction
-  std::vector<std::pair<std::vector<std::string>, std::string>> stackInstrMap;
+  std::vector<std::pair<std::vector<std::string>, llvm::Instruction *>> stackInstrMap;
   
 
   /// Statistics and information

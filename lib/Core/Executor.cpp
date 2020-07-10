@@ -1786,12 +1786,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   
   //Whenever we are about to execute an instruction within the traceCallStack, we add it to the state.
   if(state.isTracing){
-    std::string str;
-    llvm::raw_string_ostream ss(str);
-    ss << *(ki->inst);
+    // std::string str;
+    // llvm::raw_string_ostream ss(str);
+    // ss << *(ki->inst);
     state.callPathInstr.push_back(ki->inst);
-    state.callPathInstructions.push_back(ss.str());
-    state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ss.str()));
+    // state.callPathInstructions.push_back(ss.str());
+    state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ki->inst));
   }
 
   Instruction *i = ki->inst;
@@ -1810,13 +1810,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     Function* f = ri->getParent()->getParent();
     //Instruction tracing state management
-    if(!state.traceCallStack.empty()){
-      std::string ret_fn = state.traceCallStack[state.traceCallStack.size()-1];
-      if(ret_fn.find("nf_core_process") != std::string::npos){
-        state.isTracing = 0;
-      }
+    // if(!state.traceCallStack.empty()){
+    //   std::string ret_fn = state.traceCallStack[state.traceCallStack.size()-1];
+    //   if(ret_fn.find("nf_core_process") != std::string::npos){
+    //     state.isTracing = 0;
+    //   }
 
-      state.traceCallStack.pop_back();
+    //   state.traceCallStack.pop_back();
       // std::string f_name = f->getName().str();
       // std::string c_stack = state.traceCallStack.back();
       // if(f_name == "nf_core_process"){
@@ -1831,7 +1831,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       //   llvm::errs() << "\n Exitting..\n";
       //   exit(1);
       // }
-    }
+    // }
 
 
     if (!state.callPath.empty() && f == state.callPath.back().f) {
@@ -2140,28 +2140,28 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     //Instruction Tracing Management
     //Direct call
-    if(f){
-      std::string f_name = f->getName().str();
-      state.traceCallStack.push_back(f_name);
+    // if(f){
+    //   std::string f_name = f->getName().str();
+    //   state.traceCallStack.push_back(f_name);
 
-      if(f_name.find("nf_core_process") != std::string::npos){
-        state.isTracing = 1;
-      }
+    //   if(f_name.find("nf_core_process") != std::string::npos){
+    //     state.isTracing = 1;
+    //   }
 
-      if(state.isTracing){
-        std::string str;
-        llvm::raw_string_ostream ss(str);
-        ss << *(ki->inst);
-        state.callPathInstr.push_back(ki->inst);
-        state.callPathInstructions.push_back(ss.str());
-        state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ss.str()));
-      }
+    //   if(state.isTracing){
+    //     std::string str;
+    //     llvm::raw_string_ostream ss(str);
+    //     ss << *(ki->inst);
+    //     state.callPathInstr.push_back(ki->inst);
+    //     state.callPathInstructions.push_back(ss.str());
+    //     state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ss.str()));
+    //   }
 
-    }
-    else{
-      //TODO: Indirect call, not sure what to do
-      // state.callPathInstr.push_back(ki->inst);
-    }
+    // }
+    // else{
+    //   //TODO: Indirect call, not sure what to do
+    //   // state.callPathInstr.push_back(ki->inst);
+    // }
 
     // Skip debug intrinsics, we can't evaluate their metadata arguments.
     if (isa<DbgInfoIntrinsic>(i))

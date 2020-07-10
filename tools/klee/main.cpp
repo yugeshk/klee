@@ -1277,8 +1277,8 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file) {
   *file << ";;-- LLVM Instruction trace --\n";
   *file << "Call Stack | Current Function | Instruction\n";
-  for (auto it : state.callPathInstructions){
-    *file << it << "\n";
+  for (auto it : state.callPathInstr){
+    *file << *it << "\n";
   }
   
 }
@@ -1868,6 +1868,8 @@ static const char *modelledExternals[] = {
   "klee_trace_ret",
   "klee_trace_ret_ptr",
   "klee_trace_ret_ptr_field", 
+  "klee_begin_instruction_tracing",
+  "klee_end_instruction_tracing",
 
   "klee_map_symbol_names",
 
