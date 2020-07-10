@@ -276,6 +276,7 @@ public:
 
   /// @brief List of Instructions executed so far
   std::vector<llvm::Instruction *> callPathInstr;
+  std::vector<std::string> callPathInstructions;
   
   /// @brief Call Stack with unmangled Function call names. This
   /// is recorded only for the portions of the call path when we are inside
@@ -283,7 +284,7 @@ public:
   std::vector<std::string> traceCallStack;
 
   /// @brief Hash Map between CallStack and and llvm Instruction
-  std::vector<std::pair<std::vector<std::string>, llvm::Instruction *>> stackInstrMap;
+  std::vector<std::pair<std::vector<std::string>, std::string>> stackInstrMap;
   
 
   /// Statistics and information
