@@ -1142,6 +1142,11 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       terminateStateEarly(*falseState, "max-depth exceeded.");
       return StatePair(0, 0);
     }
+    
+    //if other state being returned is not NULL then we should handle instruction tracing data manually
+    falseState->callPathInstr = trueState->callPathInstr;
+    falseState->traceCallStack = trueState->traceCallStack;
+    falseState->isTracing = trueState->isTracing;
 
     return StatePair(trueState, falseState);
   }
