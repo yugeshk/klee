@@ -1243,9 +1243,10 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file, unsigned id) {
   *file << ";;-- LLVM Instruction trace -- " << id << "\n";
   *file << "Call Stack | Current Function | Instruction\n";
-  //for (auto it : state.callPathInstr){
-  //  *file << *it << "\n";
-  //}
+  for (auto it : state.callPathInstr){
+    // *file << *it << "\n";
+    it->print(*file);
+  }
   
 }
 

@@ -1791,11 +1791,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   
   //Whenever we are about to execute an instruction within the traceCallStack, we add it to the state.
   if(state.isTracing){
-    std::string str;
-    llvm::raw_string_ostream ss(str);
-    ss << *(ki->inst);
+    // std::string str;
+    // llvm::raw_string_ostream ss(str);
+    // ss << *(ki->inst);
     state.callPathInstr.push_back(ki->inst);
-    state.callPathInstructions.push_back(ss.str());
+    // state.callPathInstructions.push_back(ss.str());
     state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ki->inst));
   }
 
