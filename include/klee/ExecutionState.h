@@ -276,15 +276,14 @@ public:
 
   /// @brief List of Instructions executed so far
   std::vector<llvm::Instruction *> callPathInstr;
-  std::vector<std::string> callPathInstructions;
   
   /// @brief Call Stack with unmangled Function call names. This
   /// is recorded only for the portions of the call path when we are inside
   /// call-trace-instr-startfn (see main.cpp in tools/klee)
-  std::vector<std::string> traceCallStack;
+  std::vector<std::pair<llvm::Function *,std::string>> traceCallStack;
 
   /// @brief Hash Map between CallStack and and llvm Instruction
-  std::vector<std::pair<std::vector<std::string>, llvm::Instruction *>> stackInstrMap;
+  std::vector<std::pair<std::vector<std::pair<llvm::Function *,std::string>>, llvm::Instruction *>> stackInstrMap;
   
 
   /// Statistics and information
