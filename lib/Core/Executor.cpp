@@ -1792,13 +1792,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   
   //Whenever we are about to execute an instruction within the traceCallStack, we add it to the state.
   if(state.isTracing){
-    llvm::Function *Func = ki->inst->getFunction();
-    llvm::Function *top = state.traceCallStack[state.traceCallStack.size()-1].first;
-    while (top!= Func){
-      state.traceCallStack.pop_back();
-      top=state.traceCallStack.back().first;
-    }
-    
     state.callPathInstr.push_back(ki->inst);
     state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ki->inst));
   }
@@ -2130,9 +2123,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     //Instruction Tracing Management
     //Direct call
-    if(f && state.isTracing!=0){
+    if(f && !f->isDeclaration()){
       std::string f_name = f->getName().str();
-      state.traceCallStack.push_back(std::make_pair(ki->inst->getFunction(),f_name));
+      state.traceCallStack.push_back(f_name);
     }
 
     // Skip debug intrinsics, we can't evaluate their metadata arguments.
