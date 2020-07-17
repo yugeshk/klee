@@ -2127,6 +2127,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       std::string f_name = f->getName().str();
       state.traceCallStack.push_back(f_name);
     }
+    else if(cs.getCalledFunction() == NULL){
+      state.traceCallStack.push_back("Indirect Call");
+    }
 
     // Skip debug intrinsics, we can't evaluate their metadata arguments.
     if (isa<DbgInfoIntrinsic>(i))
