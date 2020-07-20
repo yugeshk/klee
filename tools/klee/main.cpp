@@ -1241,17 +1241,28 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
 }
 
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file, unsigned id) {
-  *file << ";;-- LLVM Instruction trace -- " << id << "\n";
-  *file << "Call Stack | Current Function | Instruction\n";
-  for (auto it : state.stackInstrMap){
-    int s = it.first.size();
-    if(s!=0){
-      for(auto it1: it.first){
-        *file << it1 << " ";
-      }
-      *file << "| " << it.first[s-1] << "|" << *(it.second) << "\n";
-    }
+  // *file << ";;-- LLVM Instruction trace -- " << id << "\n";
+  // *file << "Call Stack | Current Function | Instruction\n";
+  std::ofstream outfile;
+  std::string fileName = "instructionDump";
+  fileName += std::to_string(id);
+  fileName += ".dat";
+  char *data;
+  outfile.open(fileName, std::ios::binary | std::ios::out);
+  // for (auto it : state.stackInstrMap){
+  //   int s = it.first.size();
+  //   if(s!=0){
+  //     for(auto it1: it.first){
+  //       *file << it1 << " ";
+  //     }
+  //     *file << "| " << it.first[s-1] << "|" << *(it.second) << "\n";
+  //   }
+  // }
+  for(auto it: state.callPathInstr){
+    char *data = reinterpret_cast<char*>(it);
+    outfile.write(data, sizeof(llvm::Instruction));
   }
+  outfile.close();
   
 }
 
