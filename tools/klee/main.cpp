@@ -1279,26 +1279,38 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
 }
 
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file, unsigned id) {
-  *file << ";;-- LLVM Instruction trace -- " << id << "\n";
-  *file << "Call Stack | Current Function | Instruction\n";
+  // *file << ";;-- LLVM Instruction trace -- " << id << "\n";
+  // *file << "Call Stack | Current Function | Instruction\n";
 
-  llvm::LLVMContext TheContext;
-  llvm::IRBuilder<> Builder(TheContext);
-  llvm::Module *M = new llvm::Module("tracingModule", TheContext);
-  llvm::FunctionType *FT = llvm::FunctionType::get(Builder.getVoidTy(), false);
-  llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, "tracingFunction", M);
-  llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "tracingBB", F);
+  // llvm::LLVMContext TheContext;
+  // llvm::IRBuilder<> Builder(TheContext);
+  // llvm::Module *M = new llvm::Module("tracingModule", TheContext);
+  // llvm::FunctionType *FT = llvm::FunctionType::get(Builder.getVoidTy(), false);
+  // llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, "tracingFunction", M);
+  // llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "tracingBB", F);
 
-  for(auto it : state.callPathInstr){
-    BB->getInstList().push_back(it);
-  }
+  // for(auto it : state.callPathInstr){
+    // BB->getInstList().push_back(it);
+  // }
 
   //Before using llvm::Module::dump we create a copy of stderr
-  // std::ofstream outfile;
-  // std::string fileName = "instructionDump";
-  // fileName += std::to_string(id);
-  // fileName += ".ll";
-  // outfile.open(fileName);
+  std::ofstream outfile;
+  std::string fileName = "instructionDump";
+  fileName += std::to_string(id);
+  fileName += ".dat";
+  outfile.open(fileName, std::ios::binary | std::ios::out);
+  const char *data = (char*)(malloc(100*sizeof(char)));
+  int size = 0;
+  for(auto it: state.callPathInstr){
+    data = it->getOpcodeName();
+    size = strlen(data);
+    outfile.write((char *)(&size), sizeof(int));
+    outfile.write(data, size);
+  }
+
+  outfile.close();
+
+
 
   // //Backup streambuffer of cerr
   // std::streambuf* stream_buffer_cerr = llvm::errs
@@ -1309,7 +1321,7 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
   // //Redirect stderr to file
   // std::cerr.rdbuf(stream_buffer_file);
 
-  M->dump();
+  // M->dump();
 
   //Restore stderr
   // std::cerr.rdbuf(stream_buffer_cerr);

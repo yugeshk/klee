@@ -1219,7 +1219,7 @@ void SpecialFunctionHandler::handleBeginInstrTracing
  std::vector<ref<Expr> >
  &arguments){
    state.isTracing = 1;
-   state.callPathInstr.push_back(target->inst);
+  //  state.callPathInstr.push_back(target->inst);
  }
 
 void SpecialFunctionHandler::handleEndInstrTracing
