@@ -1279,14 +1279,42 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
 }
 
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file, unsigned id) {
-  // *file << ";;-- LLVM Instruction trace -- " << id << "\n";
-  // *file << "Call Stack | Current Function | Instruction\n";
-  std::ofstream outfile;
-  std::string fileName = "instructionDump";
-  fileName += std::to_string(id);
-  fileName += ".dat";
-  char *data;
-  outfile.open(fileName, std::ios::binary | std::ios::out);
+  *file << ";;-- LLVM Instruction trace -- " << id << "\n";
+  *file << "Call Stack | Current Function | Instruction\n";
+
+  llvm::LLVMContext TheContext;
+  llvm::IRBuilder<> Builder(TheContext);
+  llvm::Module *M = new llvm::Module("tracingModule", TheContext);
+  llvm::FunctionType *FT = llvm::FunctionType::get(Builder.getVoidTy(), false);
+  llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, "tracingFunction", M);
+  llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "tracingBB", F);
+
+  for(auto it : state.callPathInstr){
+    BB->getInstList().push_back(it);
+  }
+
+  //Before using llvm::Module::dump we create a copy of stderr
+  // std::ofstream outfile;
+  // std::string fileName = "instructionDump";
+  // fileName += std::to_string(id);
+  // fileName += ".ll";
+  // outfile.open(fileName);
+
+  // //Backup streambuffer of cerr
+  // std::streambuf* stream_buffer_cerr = llvm::errs
+
+  // //Get the streambuffer of the file
+  // std::streambuf *stream_buffer_file = outfile.rdbuf();
+
+  // //Redirect stderr to file
+  // std::cerr.rdbuf(stream_buffer_file);
+
+  M->dump();
+
+  //Restore stderr
+  // std::cerr.rdbuf(stream_buffer_cerr);
+
+
   // for (auto it : state.stackInstrMap){
   //   int s = it.first.size();
   //   if(s!=0){
@@ -1296,11 +1324,6 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
   //     *file << "| " << it.first[s-1] << "|" << *(it.second) << "\n";
   //   }
   // }
-  for(auto it: state.callPathInstr){
-    char *data = reinterpret_cast<char*>(it);
-    outfile.write(data, sizeof(llvm::Instruction));
-  }
-  outfile.close();
   
 }
 
