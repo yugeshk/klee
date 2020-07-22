@@ -1255,34 +1255,43 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
     // BB->getInstList().push_back(it);
   // }
 
-  
-  std::ofstream outfile;
-  std::string fileName = "klee-last/instructionDump";
-  fileName += std::to_string(id);
-  fileName += ".dat";
-  outfile.open(fileName, std::ios::binary | std::ios::out);
-  const char *data = (char*)(malloc(100*sizeof(char)));
-  int size = 0;
+  const char *data = (char *)(malloc(100*sizeof(char)));
+  int size;
   unsigned num;
-  for(auto it: state.callPathInstr){
+  for(auto it : state.callPathInstr){
     data = it->getOpcodeName();
-    size = strlen(data);
 
     //Save size of OpCodeName
-    outfile.write((char *)(&size), sizeof(int));
-    //Save OpCode Name
-    outfile.write(data, size);
-    //Save Number of Operands
-    num = it->getNumOperands();
-    outfile.write((char *)(&num), sizeof(unsigned));
-    //Save operands one by one
-    for(int i=0;i<num;i++){
-      llvm::Value *o = it->getOperand(i);
-      outfile << *o;
-    }
-  }
+    *file << data << "\n";
+  }  
+  
+  // std::ofstream outfile;
+  // std::string fileName = "klee-last/instructionDump";
+  // fileName += std::to_string(id);
+  // fileName += ".dat";
+  // outfile.open(fileName, std::ios::binary | std::ios::out);
+  // const char *data = (char*)(malloc(100*sizeof(char)));
+  // int size = 0;
+  // unsigned num;
+  // for(auto it: state.callPathInstr){
+  //   data = it->getOpcodeName();
+  //   size = strlen(data);
 
-  outfile.close();
+  //   //Save size of OpCodeName
+  //   outfile.write((char *)(&size), sizeof(int));
+  //   //Save OpCode Name
+  //   outfile.write(data, size);
+  //   //Save Number of Operands
+  //   num = it->getNumOperands();
+  //   outfile.write((char *)(&num), sizeof(unsigned));
+  //   //Save operands one by one
+  //   for(int i=0;i<num;i++){
+  //     llvm::Value *o = it->getOperand(i);
+  //     outfile << *o;
+  //   }
+  // }
+
+  // outfile.close();
 
 
 
