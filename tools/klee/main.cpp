@@ -1267,7 +1267,7 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
     num = it->getNumOperands();
     for(int i=0;i<num;i++){
       llvm::Value *o = it->getOperand(i);
-      *file << o->getName() << " ";
+      *file << o->getName() << "," << *(o->getType()) << " ";
     }
     *file << "\n";
   }  
