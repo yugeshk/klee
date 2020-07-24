@@ -73,6 +73,7 @@
 #include <iterator>
 #include <list>
 #include <sstream>
+#include <unordered_map>
 
 using namespace llvm;
 using namespace klee;
@@ -424,6 +425,8 @@ private:
 public:
   KleeHandler(int argc, char **argv);
   ~KleeHandler();
+
+  std::unordered_map<llvm::Instruction*, std::string> instr_str_map;
 
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
   /// Returns the number of test cases successfully generated so far
@@ -1279,63 +1282,29 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
 }
 
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file, unsigned id) {
-  // *file << ";;-- LLVM Instruction trace -- " << id << "\n";
-  // *file << "Call Stack | Current Function | Instruction\n";
+  *file << ";;-- LLVM Instruction trace -- " << id << "\n";
+  *file << "Call Stack | Current Function | Instruction\n";
 
-  // llvm::LLVMContext TheContext;
-  // llvm::IRBuilder<> Builder(TheContext);
-  // llvm::Module *M = new llvm::Module("tracingModule", TheContext);
-  // llvm::FunctionType *FT = llvm::FunctionType::get(Builder.getVoidTy(), false);
-  // llvm::Function *F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, "tracingFunction", M);
-  // llvm::BasicBlock *BB = llvm::BasicBlock::Create(TheContext, "tracingBB", F);
-
-  // for(auto it : state.callPathInstr){
-    // BB->getInstList().push_back(it);
-  // }
-
-  //Before using llvm::Module::dump we create a copy of stderr
-  std::ofstream outfile;
-  std::string fileName = "instructionDump";
-  fileName += std::to_string(id);
-  fileName += ".dat";
-  outfile.open(fileName, std::ios::binary | std::ios::out);
-  const char *data = (char*)(malloc(100*sizeof(char)));
-  int size = 0;
-  for(auto it: state.callPathInstr){
-    data = it->getOpcodeName();
-    size = strlen(data);
-    outfile.write((char *)(&size), sizeof(int));
-    outfile.write(data, size);
+  //For now we keep this at 400 instructions, till we add demarcation
+  int size = state.callPathInstr.size();
+  for(int i=0;i<400;i++){
+    if(i>=size){
+      break;
+    }
+    auto it = instr_str_map.find(state.callPathInstr[i]); 
+    if(it != instr_str_map.end()){
+      *file << it->second << "\n"; 
+    }
+    else{
+      std::string str;
+      llvm::raw_string_ostream ss(str);
+      ss << *(state.callPathInstr[i]);
+      std::string s = ss.str();
+      llvm::Instruction *I = state.callPathInstr[i];
+      instr_str_map.insert({I, s});
+      *file << *(state.callPathInstr[i]) << "\n";
+    }
   }
-
-  outfile.close();
-
-
-
-  // //Backup streambuffer of cerr
-  // std::streambuf* stream_buffer_cerr = llvm::errs
-
-  // //Get the streambuffer of the file
-  // std::streambuf *stream_buffer_file = outfile.rdbuf();
-
-  // //Redirect stderr to file
-  // std::cerr.rdbuf(stream_buffer_file);
-
-  // M->dump();
-
-  //Restore stderr
-  // std::cerr.rdbuf(stream_buffer_cerr);
-
-
-  // for (auto it : state.stackInstrMap){
-  //   int s = it.first.size();
-  //   if(s!=0){
-  //     for(auto it1: it.first){
-  //       *file << it1 << " ";
-  //     }
-  //     *file << "| " << it.first[s-1] << "|" << *(it.second) << "\n";
-  //   }
-  // }
   
 }
 

@@ -274,9 +274,6 @@ public:
   /// @brief Flag to see if llvm instruction tracing is on
   int isTracing = 0;
 
-  ///@brief Stores llvm::Context of the klee_begin_instruction_tracing intrinsic
-  // llvm::LLVMContext tracingContext;
-
   /// @brief List of Instructions executed so far
   std::vector<llvm::Instruction *> callPathInstr;
   
