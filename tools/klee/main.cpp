@@ -1310,22 +1310,6 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
 
       if(stateful or dpdk or time or verif){
         currently_demarcated = 1;
-        if(current_fn_name == "dmap_get_value"){
-          current_fn_name = "klee_forbid_access";
-        }
-        else if(current_fn_name == "map_put" || current_fn_name == "map_erase"){
-          current_fn_name = "klee_trace_extra_ptr";
-        }
-        else if(current_fn_name == "dchain_is_index_allocated"){
-          current_fn_name = "klee_int";
-        }
-        else if(current_fn_name == "vector_borrow" || current_fn_name == "vector_return"){
-          current_fn_name = "ds_path_1";
-        }
-        else if(current_fn_name == "flood"){
-          current_fn_name = "flood";
-        }
-
         currently_demarcated_fn = current_fn_name;
       }
 
