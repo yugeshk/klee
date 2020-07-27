@@ -2128,7 +2128,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       state.traceCallStack.push_back(f_name);
     }
     else if(cs.getCalledFunction() == NULL){
-      state.traceCallStack.push_back("Indirect Call");
+      state.traceCallStack.push_back("IndirectCall");
     }
 
     // Skip debug intrinsics, we can't evaluate their metadata arguments.

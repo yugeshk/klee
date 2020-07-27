@@ -74,6 +74,7 @@
 #include <list>
 #include <sstream>
 #include <unordered_map>
+#include <regex>
 
 using namespace llvm;
 using namespace klee;
@@ -1281,31 +1282,127 @@ void KleeHandler::dumpCallPath(const ExecutionState &state,
   }
 }
 
+//This Handler is very hard-coded and may need maintainence from time to time.
 void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::raw_ostream *file, unsigned id) {
   *file << ";;-- LLVM Instruction trace -- " << id << "\n";
   *file << "Call Stack | Current Function | Instruction\n";
 
-  //For now we keep this at 400 instructions, till we add demarcation
-  int size = state.callPathInstr.size();
-  for(int i=0;i<400;i++){
-    if(i>=size){
-      break;
+  // Initialize the function lists
+  std::vector<std::string> stateful_fns = {"dchain_allocate", "dchain_allocate_new_index", "dchain_rejuvenate_index", "dchain_expire_one_index", "dmap_allocate", "dmap_get_a", "dmap_get_b", "dmap_put", "dmap_erase", "dmap_get_value", "dmap_size", "expire_items", "expire_items_single_map", "map_impl_init", "map_impl_get", "map_impl_put", "map_impl_erase", "map_allocate", "map_get", "map_put", "map_erase", "map_size", "dchain_make_space", "dchain_reset", "map_set_layout", "map_entry_condition", "map_set_entry_condition", "map_reset", "map_increase_occupancy", "map_decrease_occupancy", "dmap_set_layout", "entry_condition", "dmap_set_entry_condition", "dmap_reset", "dmap_increase_occupancy", "dmap_decrease_occupancy", "dmap_lowerbound_on_occupancy", "dmap_occupancy_p", "vector_allocate", "vector_borrow", "vector_return", "vector_set_layout", "vector_reset", "handle_packet_timestamp", "lpm_lookup", "lpm_init", "memcpy", "trace_reset_buffers", "map_get_1", "map_get_2", "map2_get_1", "map2_put", "map2_erase", "dchain2_allocate", "dchain2_allocate_new_index", "dchain2_rejuvenate_index", "dchain2_expire_one_index", "lb_find_preferred_available_backend", "dchain_is_index_allocated", "dchain2_is_index_allocated", "dchain2_make_space", "dchain2_reset", "map2_set_layout", "map2_entry_condition", "map2_set_entry_condition", "map2_reset", "map2_increase_occupancy", "map2_decrease_occupancy"};
+  std::vector<std::string> dpdk_fns = {"rte_reset", "rte_arch_bswap16", "rte_arch_bswap32", "rte_arch_bswap64", "__rte_raw_cksum", "__rte_raw_cksum_reduce", "rte_raw_cksum", "rte_ipv4_phdr_cksum", "rte_ipv4_cksum", "rte_ipv4_udptcp_cksum", "rte_exit", "rte_lcore_is_enabled", "rte_get_master_lcore", "rte_get_closest_next_lcore", "rte_eth_tx_burst", "flood", "rte_pktmbuf_free", "rte_get_tsc_hz", "rte_lcore_id", "rte_rdtsc", "rte_eth_rx_burst", "rte_prefetch0", "rte_lcore_is_enabled", "rte_lcore_to_socket_id", "rte_socket_id", "rte_eth_dev_socket_id", "rte_eth_link_get_nowait", "rte_delay_ms", "rte_eal_init", "rte_eth_dev_count", "rte_lcore_count", "rte_eth_dev_configure", "rte_eth_macaddr_get", "rte_eth_dev_info_get", "rte_eth_tx_queue_setup", "rte_eth_rx_queue_setup", "rte_eth_dev_start", "rte_eth_promiscuous_enable", "rte_eal_mp_remote_launch", "rte_eal_wait_lcore", "rte_pktmbuf_pool_create", "rte_get_master_lcore", "rte_strerror", "rte_pktmbuf_clone", "cmdline_isendoftoken", "nf_set_ipv4_checksum"};
+  std::vector<std::string> time_fns = {"start_time", "restart_time", "current_time", "get_start_time_internal", "get_start_time", "clock_gettime", "gettimeofday"};
+  std::vector<std::string> verif_fns = {"loop_iteration_assumptions", "loop_iteration_assertions", "loop_invariant_consume", "loop_invariant_produce", "loop_iteration_begin", "loop_iteration_end", "loop_enumeration_begin", "loop_enumeration_end", "allocate_unique_name", "count_reuse", "init_test_data", "report_internal_error", "rand_byte", "bridge_loop_invariant_consume", "bridge_loop_invariant_produce", "bridge_loop_iteration_begin", "bridge_loop_iteration_end", "bridge_loop_iteration_assumptions", "nf_loop_iteration_begin", "nf_add_loop_iteration_assumptions", "nf_loop_iteration_end", "concretize_devices", "flow_consistency", "rte_eth_dev_count", "flood", "exit", "__uClibc_fini", "_stdio_term"};
+  std::regex symbol_re("klee*");
+  std::regex symbol2_re("_exit@plt*");
+
+  //Now we start iterating over the input trace and print only stuff we demarcate
+  int currently_demarcated = 0;
+  std::string currently_demarcated_fn = "";
+  std::string last_written_fn = "";
+  int call_gap = 1;
+  for(auto it: state.stackInstrMap){
+    std::vector<std::string> call_stack = it.first;
+    std::string opcode = it.second->getOpcodeName();
+    int s = it.first.size();
+    if(s==0){
+      continue; // Cant do anything with an empty call stack
     }
-    auto it = instr_str_map.find(state.callPathInstr[i]); 
-    if(it != instr_str_map.end()){
-      *file << it->second << "\n"; 
+    std::string current_fn_name = it.first[s-1];
+    int stateful = 0;
+    int dpdk = 0;
+    int time = 0;
+    int verif = 0;
+
+    if(currently_demarcated){
+      if(opcode != "ret"){
+        continue;
+      }
     }
-    else{
-      std::string str;
-      llvm::raw_string_ostream ss(str);
-      ss << *(state.callPathInstr[i]);
-      std::string s = ss.str();
-      llvm::Instruction *I = state.callPathInstr[i];
-      instr_str_map.insert({I, s});
-      *file << *(state.callPathInstr[i]) << "\n";
+
+    if(currently_demarcated && opcode == "ret" && current_fn_name == currently_demarcated_fn){
+      currently_demarcated = 0;
+      call_gap = 0;
+      currently_demarcated_fn = "";
+    }
+    else if(currently_demarcated == 0){
+      std::string fn_name;
+      for(auto it1 : call_stack){
+        fn_name = it1;
+        if(std::find(stateful_fns.begin(), stateful_fns.end(), it1) != stateful_fns.end()){
+          stateful = 1;
+          break;
+        }
+        else if(std::find(dpdk_fns.begin(), dpdk_fns.end(), it1) != dpdk_fns.end()){
+          dpdk = 1;
+          break;
+        }
+        else if(std::find(time_fns.begin(), time_fns.end(), it1) != time_fns.end()){
+          time = 1;
+          break;
+        }
+        else if(std::find(verif_fns.begin(), verif_fns.end(), it1) != verif_fns.end() || std::regex_match(it1, symbol_re) || std::regex_match(it1, symbol2_re)){
+          verif = 1;
+          break;
+        }
+      }
+
+      if(stateful or dpdk or time or verif){
+        currently_demarcated = 1;
+        if(current_fn_name == "dmap_get_value"){
+          current_fn_name = "klee_forbid_access";
+        }
+        else if(current_fn_name == "map_put" || current_fn_name == "map_erase"){
+          current_fn_name = "klee_trace_extra_ptr";
+        }
+        else if(current_fn_name == "dchain_is_index_allocated"){
+          current_fn_name = "klee_int";
+        }
+        else if(current_fn_name == "vector_borrow" || current_fn_name == "vector_return"){
+          current_fn_name = "ds_path_1";
+        }
+        else if(current_fn_name == "flood"){
+          current_fn_name = "flood";
+        }
+
+        currently_demarcated_fn = current_fn_name;
+      }
+
+      if(stateful || dpdk || verif || time){
+        if(call_gap){
+          last_written_fn = currently_demarcated_fn;
+          if(stateful){
+            *file << "Call to libVig model - " << fn_name << "\n";
+          }
+          else if(dpdk){
+            *file << "Call to DPDK model - " << fn_name << "\n";
+          }
+          else if(time){
+            *file << "Call to Time model - " << fn_name << "\n";
+          }
+          else if(verif){
+            *file << "Call to Verification Code - " << fn_name << "\n";
+          }
+        }
+        else{
+          if(!(last_written_fn == currently_demarcated_fn)){
+            llvm::outs() << *(it.second) << "\n";
+            llvm::outs() << "Back to back calls to " << last_written_fn << " and " << currently_demarcated_fn << "\n";
+          }
+        }
+      }
+      else{
+        call_gap = 1;
+        int s = it.first.size();
+        if(s!=0){
+          for(auto it2: it.first){
+            *file << it2 << " ";
+          }
+          *file << "| " << it.first[s-1] << "| " << *(it.second) << "\n";
+        }
+      }
     }
   }
-  
+
 }
 
 // load a .path file
