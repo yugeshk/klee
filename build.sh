@@ -45,5 +45,6 @@ popd
 # Tree generation
 sudo apt-get install python3
 sudo apt-get install python3-pip
-sudo pip install anytree
-sudo pip install sympy
+sudo python3 -m pip install anytree
+sudo python3 -m pip install sympy
+sudo python3 -m pip install delegator
