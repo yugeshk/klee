@@ -10,7 +10,6 @@ RESOLUTION=0
 TRACES_DIR=klee-last
 CONSTRAINT_NODE=none
 
-
 while getopts ":t:e:r:c:p" opt; do
   case $opt in
     t) TREE_TYPE="$OPTARG"
@@ -33,6 +32,8 @@ if [ "$TREE_TYPE" != "neg-tree" ] && [ "$TREE_TYPE" != "res-tree" ]; then
   exit
 fi
 
+PORTLIST=$TRACES_DIR/../portlist
+touch $PORTLIST
 pushd $TRACES_DIR >> /dev/null
 
 pushd ../ >> /dev/null
@@ -72,5 +73,7 @@ for DOT_FILE in $(ls $TRACES_DIR/tree-*.dot); do
 done
 
 for RES_TREE_FILE in $(ls $TRACES_DIR/../res-tree*); do
-    bash $KLEE_DIR/scripts/gen-predictor/generate.sh $RES_TREE_FILE >> /dev/null
+  bash $KLEE_DIR/scripts/gen-predictor/generate.sh $RES_TREE_FILE $PORTLIST >> /dev/null
+  sed -i 's/\([a-z_]*\)\(_in_\)\([^ :)]*\)/\3.contains(\1)/' $RES_TREE_FILE.py
+  sed -i 's/is_full/is_full()/' $RES_TREE_FILE.py
 done

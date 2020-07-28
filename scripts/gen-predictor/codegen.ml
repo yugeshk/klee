@@ -49,7 +49,7 @@ let rec render_if_tree tree ident debug =
 let rewrite_cond cond =
   List.fold_left ~init:cond ~f:(fun cond rule ->
       call_recursively_on_term rule cond)
-    Domain.rewrite_rules
+    Program_rules.rewrite_rules
 
 let rec rewrite_if_tree = function
   | Branch (c, t, e) ->
