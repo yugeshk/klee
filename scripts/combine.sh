@@ -15,11 +15,13 @@ join -t, -j1 \
     | sed -e 's/_/,/' \
     | awk -F, '
       {
-        performance = ($3 + $4);
-		print $1 "," $2 "," performance > "combined_perf.txt";
-        if (performance > max_performance[$2]) {
-          max_performance[$2] = performance;
-          trace[$2] = $1;
+        if($3 >=0) {
+          performance = ($3 + $4);
+          print $1 "," $2 "," performance > "combined_perf.txt";
+          if (performance > max_performance[$2]) {
+            max_performance[$2] = performance;
+            trace[$2] = $1;
+          }
         }
       }
 
