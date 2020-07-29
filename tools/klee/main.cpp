@@ -716,7 +716,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       
       if(DumpCallTraceInstructions){
         std::unique_ptr<llvm::raw_fd_ostream> instr_trace_file = 
-          openOutputFile(getTestFilename("ll", id));
+          openOutputFile(getTestFilename("ll.demarcated", id));
         dumpCallPathInstructions(state, instr_trace_file.get(), id);
       }
 
