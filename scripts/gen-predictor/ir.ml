@@ -11,9 +11,11 @@ type bop = Eq | Le | Lt | Ge | Gt
 type ttype = | Ptr of ttype
              | Array of ttype
              | Sint64
+             | Sint48
              | Sint32
              | Sint16
              | Sint8
+             | Uint48
              | Uint64
              | Uint32
              | Uint16
@@ -55,8 +57,10 @@ let rec ttype_to_str = function
   | Ptr c_type -> ttype_to_str c_type ^ "*"
   | Array a_type -> ttype_to_str a_type  ^
                     "[]" (* Verifast does not like this: "[]" *)
+  | Sint48 -> "int48_t"
   | Sint64 -> "int64_t" | Sint32 -> "int32_t"
   | Sint16 -> "int16_t" | Sint8 -> "int8_t"
+  | Uint48 -> "int48_t"
   | Uint64 -> "uint64_t"| Uint32 -> "uint32_t"
   | Uint16 -> "uint16_t" | Uint8 -> "uint8_t"
   | Void -> "void" | Str (name, _) -> "struct " ^ name

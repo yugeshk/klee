@@ -14,7 +14,7 @@ let lprintf fmt = ksprintf log fmt
 
 type 'x confidence = Sure of 'x | Tentative of 'x | Noidea
 
-type t_width = W1 | W8 | W16 | W32 | W64
+type t_width = W1 | W8 | W16 | W32 | W48 | W64
 type t_sign = Sgn | Unsgn
 type type_guess = {w:t_width confidence;
                    s:t_sign confidence;
@@ -37,7 +37,7 @@ type guessed_types = {ret_type: ttype;
 let known_addresses : address_spec list Int64.Map.t ref = ref Int64.Map.empty
 
 let int_of_twidth = function
-    W1 -> 1 | W8 -> 8 | W16 -> 16 | W32 -> 32 | W64 -> 64
+    W1 -> 1 | W8 -> 8 | W16 -> 16 | W32 -> 32 | W48 -> 48 | W64 -> 64
 
 let ttype_of_guess = function
   | {precise=Unknown;s=Tentative Sgn;w;}
@@ -47,6 +47,7 @@ let ttype_of_guess = function
       | Sure W8 | Tentative W8 -> Sint8
       | Sure W16 | Tentative W16 -> Sint16
       | Sure W32 | Tentative W32 -> Sint32
+      | Sure W48 | Tentative W48 -> Sint48
       | Sure W64 | Tentative W64 -> Sint64
       end
   | {precise=Unknown;s=Tentative Unsgn;w;}
@@ -56,6 +57,7 @@ let ttype_of_guess = function
       | Sure W8 | Tentative W8 -> Uint8
       | Sure W16 | Tentative W16 -> Uint16
       | Sure W32 | Tentative W32 -> Uint32
+      | Sure W48 | Tentative W48 -> Uint64
       | Sure W64 | Tentative W64 -> Uint64
       end
   | {precise=Unknown;s=Noidea;w=Sure W1;}
@@ -123,6 +125,7 @@ let guess_type exp t =
       | Sexp.List (Sexp.Atom _ :: Sexp.Atom "w8" :: _) -> Uint8
       | Sexp.List (Sexp.Atom _ :: Sexp.Atom "w16" :: _) -> Uint16
       | Sexp.List (Sexp.Atom _ :: Sexp.Atom "w32" :: _) -> Uint32
+      | Sexp.List (Sexp.Atom _ :: Sexp.Atom "w48" :: _) -> Uint48
       | Sexp.List (Sexp.Atom _ :: Sexp.Atom "w64" :: _) -> Uint64
       | _ -> failwith ("GUESS TYPE FAILURE Unknown " ^ (Sexp.to_string exp))
     end
@@ -246,6 +249,7 @@ let convert_str_to_width_confidence w =
   else if String.equal w "w8" then Sure W8
   else if String.equal w "w16" then Sure W16
   else if String.equal w "w32" then Sure W32
+  else if String.equal w "w48" then Sure W48
   else if String.equal w "w64" then Sure W64
   else Noidea
 
@@ -448,7 +452,7 @@ let rec get_sexp_value_raw exp ?(at=Beginning) t =
   | Sexp.Atom v ->
     begin
       match t with
-      | Sint64 | Sint32 | Sint16 | Sint8 -> {v=Int (get_sint_in_bounds v);t}
+      | Sint64 | Sint48 | Sint32 | Sint16 | Sint8 -> {v=Int (get_sint_in_bounds v);t}
       | _ ->
         if String.equal v "true" then {v=Bool true;t=Boolean}
         else if String.equal v "false" then {v=Bool false;t=Boolean}
