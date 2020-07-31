@@ -409,6 +409,7 @@ private:
 
   CallTree m_callTree;
   ConstraintTree m_constraintTree;
+  std::map<std::string,std::map<int,ref<Expr>>> reused_symbols;
 
 public:
   KleeHandler(int argc, char **argv);
@@ -444,6 +445,7 @@ public:
   void dumpCallPathTree();
   void dumpConstraintTree();
   void dumpCallPath(const ExecutionState &state, llvm::raw_ostream *file);
+  void dumpReusedSymbols();
 };
 
 KleeHandler::KleeHandler(int argc, char **argv)
@@ -685,6 +687,13 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         m_constraintTree.addTest(id, state);
       }
 
+      for (auto it: state.reused_symbols){
+        if(reused_symbols.find(it.first) == reused_symbols.end()){
+          reused_symbols[it.first] = it.second;
+          continue;
+        }
+        reused_symbols[it.first].insert(it.second.begin(), it.second.end());
+      }
       for (unsigned i = 0; i < b.numObjects; i++)
         delete[] b.objects[i].bytes;
       delete[] b.objects;
@@ -1132,6 +1141,26 @@ void KleeHandler::dumpConstraintTree() {
   filename = "constraint-branches.txt";
   std::unique_ptr<llvm::raw_ostream> constraints_file = this->openOutputFile(filename);
   m_constraintTree.dumpConstraintTree(tree_file.get(), constraints_file.get());
+}
+
+void KleeHandler::dumpReusedSymbols() {
+  std::string filename = "reused-symbols.txt";
+  std::unique_ptr<llvm::raw_ostream> symbol_file = this->openOutputFile(filename);
+  for(auto it : reused_symbols){
+    if(it.second.size()>1){
+      for(auto it1: it.second){
+        std::string symbol_name = it.first;
+        if(it1.first>0){
+          symbol_name = symbol_name + "_" + std::to_string(it1.first);
+        }
+        *symbol_file << symbol_name << " | " << it1.second << "\n";
+      }
+
+    }
+    for(auto it1: it.second){
+
+    }
+  }
 }
 
 void KleeHandler::dumpCallPath(const ExecutionState &state,
@@ -1812,6 +1841,8 @@ static const char *modelledExternals[] = {
   "klee_trace_ret",
   "klee_trace_ret_ptr",
   "klee_trace_ret_ptr_field", 
+
+  "klee_map_symbol_names",
 
   /* tracing functions end */
 
@@ -2508,6 +2539,8 @@ int main(int argc, char **argv, char **envp) {
 
     if (DumpConstraintTree)
       handler->dumpConstraintTree();
+
+    handler->dumpReusedSymbols();  
 
     while (!seeds.empty()) {
       kTest_free(seeds.back());

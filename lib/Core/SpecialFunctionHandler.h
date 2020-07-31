@@ -172,6 +172,7 @@ public:
   HANDLER(handleAllowAccess);
   HANDLER(handleDumpConstraints);
   HANDLER(handlePossiblyHavoc);
+  HANDLER(handleMapSymbolNames);
 #undef HANDLER
 };
 } // namespace klee

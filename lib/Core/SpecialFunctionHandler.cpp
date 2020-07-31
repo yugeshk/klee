@@ -166,6 +166,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_allow_access", handleAllowAccess, false),
   add("klee_dump_constraints", handleDumpConstraints, false),
   add("klee_possibly_havoc", handlePossiblyHavoc, false),
+  add("klee_map_symbol_names", handleMapSymbolNames, false),
 
   // operator delete[](void*)
   add("_ZdaPv", handleDeleteArray, false),
@@ -1602,4 +1603,20 @@ void SpecialFunctionHandler::handlePossiblyHavoc(ExecutionState &state,
                                      Executor::User);
     }
   }
+}
+
+void SpecialFunctionHandler::handleMapSymbolNames(ExecutionState &state,
+                                                 KInstruction *target,
+                                                 std::vector<ref<Expr> > &arguments) {
+  if(arguments.size() != 4) {
+    executor.terminateStateOnError
+      (state, "Incorrect number of arguments to klee_map_symbol_names",
+       Executor::User);
+  }
+  std::string symbol_name = readStringAtAddress(state, arguments[0]);
+  int occurence = (cast<klee::ConstantExpr>(arguments[1]))->getZExtValue();
+  Expr::Width width = (cast<klee::ConstantExpr>(arguments[3]))->getZExtValue();
+  width = width * 8;//Convert to bits.
+  ref<Expr> key_expr = state.readMemoryChunk(arguments[2], width, true);
+  state.reused_symbols[symbol_name]={{occurence,key_expr}};
 }

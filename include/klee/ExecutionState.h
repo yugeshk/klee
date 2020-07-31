@@ -351,6 +351,8 @@ public:
   // The numbers of times this state has run through Executor::stepInstruction
   std::uint64_t steppedInstructions;
 
+  std::map<std::string,std::map<int,ref<Expr>>> reused_symbols;
+
 private:
   ExecutionState() : ptreeNode(0) {}
 
