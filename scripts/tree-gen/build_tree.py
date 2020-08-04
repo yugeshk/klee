@@ -27,10 +27,12 @@ perf_metric = sys.argv[4]
 tree_type = sys.argv[5]
 tree_file = sys.argv[6]
 constraint_file = sys.argv[7]
-expected_perf = int(sys.argv[8])
-perf_resolution = int(sys.argv[9])
+max_perf = int(sys.argv[8])
+min_perf = int(sys.argv[9])
 constraint_node = sys.argv[10]
 
+expected_perf = (max_perf+min_perf)/2
+perf_resolution = (max_perf-min_perf)/2
 
 class Constraint:
 
@@ -392,7 +394,7 @@ def pretty_print_neg_tree(root):
 
 
 def pretty_print_res_tree(root):
-    file_name = "res-tree-%d" % (perf_resolution)
+    file_name = "%s-%d" % (tree_type, perf_resolution)
     nodes = list(node.name for node in PostOrderIter(
         tree_root) if node.is_leaf)
     paths = list()
@@ -959,8 +961,13 @@ def node_identifier_fn(node):
         # identifier += '\nFormula = %s' % (repr(node.formula))
 
     else:
-        identifier = '%s:%s:%s\n Merge_res = %d' % (
+        if(tree_type == "res-tree"):
+            identifier = '%s:%s:%s\n Merge_res = %d' % (
             node.name, node.id, node.depth, node.merge_res)
+        else:
+            identifier = '%s:%s:%s' % (
+            node.name, node.id, node.depth)
+
 
     tag = str(node.tags)[1:-1]  # Removes the square brackets around the list
     tag = tag.replace(", ", "\n")

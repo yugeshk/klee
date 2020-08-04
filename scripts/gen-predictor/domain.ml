@@ -20,6 +20,10 @@ let rewrite_rules : (term -> term option) list =
       | Utility (Slice ({v=Id "user_buf";t=_}, 112, 8)) ->
         Some (Str_idx ({v=Id "pkt";t=Unknown}, "version_ihl"))
       (* Src and dest MAC addresses *)
+      | Utility (Slice ({v=Id "user_buf";t=_}, 0, 48)) ->
+        Some (Str_idx ({v=Id "pkt";t=Unknown}, "src_macaddr"))
+      | Utility (Slice ({v=Id "user_buf";t=_}, 48, 48)) ->
+        Some (Str_idx ({v=Id "pkt";t=Unknown}, "dst_macaddr"))
       | Utility (Slice({v = Id "user_buf"; t = _},0,8)) ->
         Some (Str_idx ({v=Str_idx ({v=Id "pkt";t=Unknown}, "src_mac");t=Unknown},"a"))
       | Utility (Slice({v = Id "user_buf"; t = _},8,8)) ->
