@@ -37,7 +37,7 @@ touch $PORTLIST
 pushd $TRACES_DIR >> /dev/null
 
 pushd ../ >> /dev/null
-  rm -f res-tree*
+  rm -f res-tree* neg-tree*
 popd >> /dev/null
 
 rm -f tree*.dot 
@@ -65,13 +65,12 @@ mv neg-tree* ../
 
 popd >> /dev/null
 
-rm -f tree*.png
+rm -f *tree*.png
 
 # Generate visual representations
-for DOT_FILE in $(ls $TRACES_DIR/*tree-*.dot); do
+for DOT_FILE in $(ls $TRACES_DIR/../*tree*.dot); do
     TREE_FILE_NAME=${DOT_FILE/"dot"/"png"}
-    TREE_FILE_NAME=${TREE_FILE_NAME/$TRACES_DIR/""}
-    TREE_FILE_NAME=${TREE_FILE_NAME/"/"/""}
+    TREE_FILE_NAME=${TREE_FILE_NAME##*/} ## Removes everything until last "/". Source - https://stackoverflow.com/questions/3162385/how-to-split-a-string-in-shell-and-get-the-last-field
     dot $DOT_FILE -T png -o $TREE_FILE_NAME
 done
 
@@ -80,9 +79,9 @@ REUSED_SYMBOLS=$TRACES_DIR/reused-symbols.txt
 FIXED_SYMBOLS=$TRACES_DIR/fixed-symbols.txt
 bash $KLEE_DIR/scripts/gen-predictor/pre_processing.sh $REUSED_SYMBOLS $FIXED_SYMBOLS >> /dev/null
 
-for RES_TREE_FILE in $(ls $TRACES_DIR/../res-tree*); do
-  python3 $KLEE_DIR/scripts/gen-predictor/fancy_replace.py $RES_TREE_FILE $FIXED_SYMBOLS >> temp
-  bash $KLEE_DIR/scripts/gen-predictor/generate.sh $RES_TREE_FILE $PORTLIST >> /dev/null
-  sed -i 's/\([a-z_.]*\)\(_in_\)\([^ :)]*\)/\3.contains(\1)/' $RES_TREE_FILE.py
-  sed -i 's/is_full/is_full()/' $RES_TREE_FILE.py
+for TREE_FILE in $(ls $TRACES_DIR/../*-tree*.txt); do
+  python3 $KLEE_DIR/scripts/gen-predictor/fancy_replace.py $TREE_FILE $FIXED_SYMBOLS >> /dev/null
+  bash $KLEE_DIR/scripts/gen-predictor/generate.sh $TREE_FILE $PORTLIST >> /dev/null
+  sed -i 's/\([a-z_.]*\)\(_in_\)\([^ :)]*\)/\3.contains(\1)/' $TREE_FILE.py
+  sed -i 's/is_full/is_full()/' $TREE_FILE.py
 done

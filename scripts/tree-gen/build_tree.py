@@ -144,7 +144,7 @@ def process_res_tree():
         find_merge_resolutions(tree_root)
         cliff_res = get_cliff_points(tree_root)
         if(len(cliff_res) == 0 or min(cliff_res) > res):
-            pretty_print_res_tree(tree_root)
+            pretty_print_tree(tree_root)
             print_tree_image(tree_root)
 
 
@@ -161,12 +161,15 @@ def process_neg_tree():
 
     tree_root = remove_spurious_branching(tree_root)
     tree_root = coalesce_constraints(tree_root)
-    pretty_print_neg_tree(tree_root)
+    pretty_print_tree(tree_root)
     print_tree_image(tree_root)
 
 
 def print_tree_image(root):
-    tree_file_name = "tree-%d.dot" % (perf_resolution)
+    if(tree_type == "neg-tree"):
+        tree_file_name = tree_type+".dot"
+    else:
+        tree_file_name = tree_type+"-%d.dot" % (perf_resolution)
     DotExporter(root,
                 nodenamefunc=node_identifier_fn,
                 nodeattrfunc=node_colour_fn).to_dotfile(tree_file_name)
@@ -393,8 +396,11 @@ def pretty_print_neg_tree(root):
         f.close()
 
 
-def pretty_print_res_tree(root):
-    file_name = "%s-%d" % (tree_type, perf_resolution)
+def pretty_print_tree(root):
+    if(tree_type == "neg-tree"):
+        file_name = "%s.txt" % (tree_type)
+    else:
+        file_name = "%s-%d.txt" % (tree_type,perf_resolution)
     nodes = list(node.name for node in PostOrderIter(
         tree_root) if node.is_leaf)
     paths = list()
@@ -403,6 +409,15 @@ def pretty_print_res_tree(root):
         paths.append((node, node_path))
     depth_root = build_path_tree(paths)
     print_tree(depth_root, file_name)
+    if(tree_type == "neg-tree"):
+        # Printing loop PCV violations
+        if(len(loop_pcv_violations)):
+            loop_violations_file="%s-loop" %(tree_type)
+            f = open(loop_violations_file, "w")
+            for formula in loop_pcv_violations:
+                f.write(formula+"\n")
+            f.write("Cause(s) of violation\n%s" % (loop_pcv_root_cause))
+            f.close()
 
 
 def build_path_tree(paths_list):
