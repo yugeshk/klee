@@ -160,8 +160,6 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_trace_extra_ptr_nested_nested_field",
       handleTraceExtraPtrNestedNestedField, false),
   add("klee_trace_extra_fptr", handleTraceExtraFPtr, false),
-  add("klee_begin_instruction_tracing", handleBeginInstrTracing, false),
-  add("klee_end_instruction_tracing", handleEndInstrTracing, false),
   add("klee_forget_all", handleForgetAll, false),
   add("klee_induce_invariants", handleInduceInvariants, true),
   add("klee_forbid_access", handleForbidAccess, false),
@@ -1211,23 +1209,6 @@ void SpecialFunctionHandler::handleTraceExtraPtrNestedField
 
   state.traceExtraPtrNestedField(ptr, base_offset, offset, width, name, trace_in, trace_out);
 }
-
-void SpecialFunctionHandler::handleBeginInstrTracing
-(ExecutionState &state,
- KInstruction *target,
- std::vector<ref<Expr> >
- &arguments){
-   state.isTracing = 1;
-  //  state.callPathInstr.push_back(target->inst);
- }
-
-void SpecialFunctionHandler::handleEndInstrTracing
-(ExecutionState &state,
- KInstruction *target,
- std::vector<ref<Expr> >
- &arguments){
-   state.isTracing = 0;
- }
 
 void SpecialFunctionHandler::handleTraceExtraPtrNestedNestedField
 (ExecutionState &state,
