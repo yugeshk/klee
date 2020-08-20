@@ -1811,12 +1811,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     }
 
     Function* f = ri->getParent()->getParent();
+    std::string f_name = f->getName().str();
     //Instruction tracing state management
     if(!state.traceCallStack.empty()){
       state.traceCallStack.pop_back();
 
-      //Now we check if this was the last function on callStack
-      if(state.traceCallStack.empty()){
+      //Now we check if this was the --end-fn on the call stack
+      if(f_name == CallTraceEndPoint){
         state.isTracing = 0;
       }
     }
