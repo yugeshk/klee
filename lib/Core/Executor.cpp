@@ -113,12 +113,12 @@ cl::OptionCategory
 
 cl::OptionCategory TestGenCat("Test generation options",
                               "These options impact test generation.");
-} // namespace klee
-
-namespace {
 
 cl::OptionCategory TestCaseCat("Test case options",
                                  "These options select the files to generate for each test case.");
+} // namespace klee
+
+namespace {
 
 /*** Test generation options ***/
 
