@@ -348,8 +348,6 @@ void klee_trace_ret_ptr_field(int offset, int width, char *name) {}
 void klee_trace_ret_ptr_field_just_ptr(int offset, int width, char *name) {}
 void klee_trace_param_ptr_nested_field(void *ptr, int base_offset, int offset,
                                        int width, char *name) {}
-void klee_begin_instruction_tracing() {}
-void klee_end_instruction_tracing() {}
 void klee_trace_param_ptr_nested_field_directed(void *ptr, int base_offset,
                                                 int offset, int width,
                                                 char *name,

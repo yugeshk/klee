@@ -163,8 +163,6 @@ public:
   HANDLER(handleTraceExtraPtr);
   HANDLER(handleTraceExtraPtrField);
   HANDLER(handleTraceExtraPtrFieldJustPtr);
-  HANDLER(handleBeginInstrTracing);
-  HANDLER(handleEndInstrTracing);
   HANDLER(handleTraceExtraPtrNestedField);
   HANDLER(handleTraceExtraPtrNestedNestedField);
   HANDLER(handleTraceExtraFPtr);
