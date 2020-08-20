@@ -1298,35 +1298,31 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
   //Now we start iterating over the input trace and print only stuff we demarcate
   int currently_demarcated = 0;
   std::string currently_demarcated_fn = "";
-  std::string last_written_fn = "";
-  int call_gap = 1;
   for(auto it: state.stackInstrMap){
-    std::vector<std::string> call_stack = it.first;
     std::string opcode = it.second->getOpcodeName();
-    int s = it.first.size();
-    if(s==0){
+    std::string current_fn_name;
+    if(it.first.size() != 0){
+      current_fn_name = it.first[it.first.size()-1];
+    }
+    else{
       continue; // Cant do anything with an empty call stack
     }
-    std::string current_fn_name = it.first[s-1];
     int function_list_index[4] = {0,0,0,0};
     std::string function_list_name[4] = {"libVig", "DPDK", "TIME", "Verification"};
     std::vector<std::string> function_list[4] = {stateful_fns, dpdk_fns, time_fns, verif_fns};
 
-    if(currently_demarcated){
-      if(opcode != "ret"){
-        continue;
-      }
+    if(currently_demarcated && opcode != "ret"){
+      continue;
     }
 
     if(currently_demarcated && opcode == "ret" && current_fn_name == currently_demarcated_fn){
       currently_demarcated = 0;
-      call_gap = 0;
       currently_demarcated_fn = "";
     }
     else if(currently_demarcated == 0){
       std::string fn_name;
       int found = 0;
-      for(auto it1 : call_stack){
+      for(auto it1 : it.first){
         fn_name = it1;
         for(int list_counter = 0; list_counter <= 3; list_counter++){
           if(std::find(function_list[list_counter].begin(), function_list[list_counter].end(), it1) != function_list[list_counter].end()){
@@ -1347,25 +1343,7 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
         currently_demarcated_fn = current_fn_name;
       }
 
-      if(check){
-        if(call_gap){
-          last_written_fn = currently_demarcated_fn;
-          for(int list_counter = 0; list_counter <=3; list_counter++){
-            if(function_list_index[list_counter]){
-              *file << "Call to " << function_list_name[list_counter] << " model - " << fn_name << "\n";
-              break;
-            }
-          }
-        }
-        else{
-          if(!(last_written_fn == currently_demarcated_fn)){
-            llvm::outs() << *(it.second) << "\n";
-            llvm::outs() << "Back to back calls to " << last_written_fn << " and " << currently_demarcated_fn << "\n";
-          }
-        }
-      }
-      else{
-        call_gap = 1;
+      if(!check){
         int s = it.first.size();
         if(s!=0){
           for(auto it2: it.first){
