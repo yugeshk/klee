@@ -1814,6 +1814,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     //Instruction tracing state management
     if(!state.traceCallStack.empty()){
       state.traceCallStack.pop_back();
+
+      //Now we check if this was the last function on callStack
+      if(state.traceCallStack.empty()){
+        state.isTracing = 0;
+      }
     }
 
 
@@ -2126,6 +2131,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if(f && !f->isDeclaration()){
       std::string f_name = f->getName().str();
       state.traceCallStack.push_back(f_name);
+
+      //manage state.is_tracing
+      if(f_name == CallTraceStartPoint){
+        state.isTracing = 1;
+        //We must also record the call to --start-fn
+        state.callPathInstr.push_back(ki->inst);
+        state.stackInstrMap.push_back(std::make_pair(state.traceCallStack, ki->inst));      
+      }
     }
     else if(cs.getCalledFunction() == NULL){
       state.traceCallStack.push_back("IndirectCall");
