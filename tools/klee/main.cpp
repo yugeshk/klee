@@ -1308,8 +1308,8 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
       continue; // Cant do anything with an empty call stack
     }
     int function_list_index[4] = {0,0,0,0};
-    std::string function_list_name[4] = {"libVig", "DPDK", "TIME", "Verification"};
-    std::vector<std::string> function_list[4] = {stateful_fns, dpdk_fns, time_fns, verif_fns};
+    std::vector<std::string> function_list_name = {"libVig", "DPDK", "TIME", "Verification"};
+    std::vector<std::vector<std::string>> function_list = {stateful_fns, dpdk_fns, time_fns, verif_fns};
 
     if(currently_demarcated && opcode != "ret"){
       continue;
