@@ -1270,10 +1270,9 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
       continue; // Cant do anything with an empty call stack
     }
     std::string current_fn_name = it.first[s-1];
-    int stateful = 0;
-    int dpdk = 0;
-    int time = 0;
-    int verif = 0;
+    int function_list_index[4] = {0,0,0,0};
+    std::string function_list_name[4] = {"libVig", "DPDK", "TIME", "Verification"};
+    std::vector<std::string> function_list[4] = {stateful_fns, dpdk_fns, time_fns, verif_fns};
 
     if(currently_demarcated){
       if(opcode != "ret"){
@@ -1288,45 +1287,36 @@ void KleeHandler::dumpCallPathInstructions(const ExecutionState &state, llvm::ra
     }
     else if(currently_demarcated == 0){
       std::string fn_name;
+      int found = 0;
       for(auto it1 : call_stack){
         fn_name = it1;
-        if(std::find(stateful_fns.begin(), stateful_fns.end(), it1) != stateful_fns.end()){
-          stateful = 1;
-          break;
+        for(int list_counter = 0; list_counter <= 3; list_counter++){
+          if(std::find(function_list[list_counter].begin(), function_list[list_counter].end(), it1) != function_list[list_counter].end()){
+            function_list_index[list_counter] = 1;
+            found = 1;
+            break;
+          }
         }
-        else if(std::find(dpdk_fns.begin(), dpdk_fns.end(), it1) != dpdk_fns.end()){
-          dpdk = 1;
-          break;
-        }
-        else if(std::find(time_fns.begin(), time_fns.end(), it1) != time_fns.end()){
-          time = 1;
-          break;
-        }
-        else if(std::find(verif_fns.begin(), verif_fns.end(), it1) != verif_fns.end() || std::regex_match(it1, symbol_re) || std::regex_match(it1, symbol2_re)){
-          verif = 1;
+        if(found == 1){
           break;
         }
       }
 
-      if(stateful or dpdk or time or verif){
+      int check = function_list_index[0] || function_list_index[1] || function_list_index[2] || function_list_index[3];
+
+      if(check){
         currently_demarcated = 1;
         currently_demarcated_fn = current_fn_name;
       }
 
-      if(stateful || dpdk || verif || time){
+      if(check){
         if(call_gap){
           last_written_fn = currently_demarcated_fn;
-          if(stateful){
-            *file << "Call to libVig model - " << fn_name << "\n";
-          }
-          else if(dpdk){
-            *file << "Call to DPDK model - " << fn_name << "\n";
-          }
-          else if(time){
-            *file << "Call to Time model - " << fn_name << "\n";
-          }
-          else if(verif){
-            *file << "Call to Verification Code - " << fn_name << "\n";
+          for(int list_counter = 0; list_counter <=3; list_counter++){
+            if(function_list_index[list_counter]){
+              *file << "Call to " << function_list_name[list_counter] << " model - " << fn_name << "\n";
+              break;
+            }
           }
         }
         else{
@@ -1936,8 +1926,6 @@ static const char *modelledExternals[] = {
   "klee_trace_ret",
   "klee_trace_ret_ptr",
   "klee_trace_ret_ptr_field", 
-  "klee_begin_instruction_tracing",
-  "klee_end_instruction_tracing",
 
   /* tracing functions end */
 
