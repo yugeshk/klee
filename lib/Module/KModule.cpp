@@ -451,7 +451,7 @@ KFunction::KFunction(llvm::Function *_function,
     trackCoverage(true) {
 
   // Build loop info, for loop-invariant deduction.
-  llvm::DominatorTreeBase<llvm::BasicBlock> dt(false);
+  llvm::DominatorTreeBase<llvm::BasicBlock, false> dt;
   dt.recalculate(*function);
   loopInfo.analyze(dt);
   // Assign unique instruction IDs to each basic block

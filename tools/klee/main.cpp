@@ -29,7 +29,11 @@
 #include "klee/Statistics.h"
 #include "klee/util/ExprPPrinter.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(4, 0)
+#include "llvm/Bitcode/BitcodeWriter.h"
+#else
 #include "llvm/Bitcode/ReaderWriter.h"
+#endif
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
