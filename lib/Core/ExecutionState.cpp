@@ -500,7 +500,7 @@ bool symbolSetsIntersect(const SymbolSet &a, const SymbolSet &b) {
 std::vector<ref<Expr>>
 ExecutionState::relevantConstraints(SymbolSet symbols) const {
   std::vector<ref<Expr>> ret;
-  llvm::SmallPtrSet<Expr *, 100> insertedConstraints;
+  llvm::SmallPtrSet<Expr *, 32> insertedConstraints;
   bool newSymbols = false;
   do {
     newSymbols = false;
