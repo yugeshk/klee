@@ -114,8 +114,6 @@ cl::OptionCategory
 cl::OptionCategory TestGenCat("Test generation options",
                               "These options impact test generation.");
 
-cl::OptionCategory TestCaseCat("Test case options",
-                                 "These options select the files to generate for each test case.");
 } // namespace klee
 
 namespace {
@@ -423,13 +421,13 @@ cl::opt<bool>
   CallTraceStartPoint("call-trace-instr-startfn",
                 cl::desc("Specify Function which is starting point for dumping call trace instructions."),
                 cl::init("nf_core_process"),
-                cl::cat(TestCaseCat));
+                cl::cat(DebugCat));
 
   cl::opt<std::string>
   CallTraceEndPoint("call-trace-instr-endfn",
                 cl::desc("Specify Function which is end point for dumping call trace instructions."),
                 cl::init("nf_core_process"),
-                cl::cat(TestCaseCat));
+                cl::cat(DebugCat));
 
 } // namespace
 
